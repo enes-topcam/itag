@@ -5,11 +5,15 @@
     <!-- Android 11 ve altı -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+    <!-- Konum: Android 11 ve altında tarama için; tüm sürümlerde "son görülen konum" için (isteğe bağlı) -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Bildirim: kopma uyarısı (Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
     <application
-        android:label="iTag Bulucu"
+        android:label="TPCM Find"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
