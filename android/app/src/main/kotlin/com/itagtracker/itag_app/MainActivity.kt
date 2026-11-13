@@ -1,10 +1,13 @@
 package com.itagtracker.itag_app
 
 import android.Manifest
+import android.app.PendingIntent
+import android.bluetooth.BluetoothManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -19,6 +22,40 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private var pending: MethodChannel.Result? = null
     private val requestCode = 4242
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        cleanupRemovedMapFeature()
+    }
+
+    /**
+     * Harita / sessiz dinleme özelliği kaldırıldı (2026-11-13). Önceki sürümün
+     * sisteme bıraktığı PendingIntent'li BLE taramasını durdur ve kaydedilmiş
+     * konum verilerini sil. Zararsız; artık yapacak bir şey yoksa hiçbir şey yapmaz.
+     */
+    private fun cleanupRemovedMapFeature() {
+        try {
+            val i = Intent("com.itagtracker.itag_app.PASSIVE_SCAN")
+                .setClassName(packageName, "com.itagtracker.itag_app.PassiveScanReceiver")
+            val flags = PendingIntent.FLAG_NO_CREATE or
+                (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
+            val pi = PendingIntent.getBroadcast(this, 77, i, flags)
+            if (pi != null) {
+                val scanAllowed = Build.VERSION.SDK_INT < 31 ||
+                    checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) ==
+                    PackageManager.PERMISSION_GRANTED
+                val scanner = getSystemService(BluetoothManager::class.java)
+                    ?.adapter?.bluetoothLeScanner
+                if (scanAllowed && scanner != null) scanner.stopScan(pi)
+                pi.cancel()
+            }
+        } catch (_: Exception) {}
+        getSharedPreferences("tpcm_native", MODE_PRIVATE).edit().clear().apply()
+        getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE).edit()
+            .remove("flutter.sightings_v1")
+            .remove("flutter.passiveTracking")
+            .apply()
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -38,35 +75,6 @@ class MainActivity : FlutterActivity() {
                         Notifier.cancelLost(this, call.argument<String>("id") ?: "")
                         result.success(null)
                     }
-                    // Sessiz dinleme (Dart: tagManager.syncPassive)
-                    "setPassiveScan" -> {
-                        val ok = PassiveScan.configure(
-                            applicationContext,
-                            call.argument<Boolean>("enabled") ?: false,
-                            call.argument<List<String>>("ids") ?: emptyList()
-                        )
-                        result.success(ok)
-                    }
-                    // Bağlanınca / bağlantı kesilince konumu hemen kaydet.
-                    "recordSighting" -> {
-                        val id = call.argument<String>("id") ?: ""
-                        Sightings.record(applicationContext, listOf(id), force = true) {
-                            runOnUiThread { result.success(null) }
-                        }
-                    }
-                    "openMap" -> {
-                        val lat = call.argument<Double>("lat") ?: 0.0
-                        val lng = call.argument<Double>("lng") ?: 0.0
-                        val label = Uri.encode(call.argument<String>("label") ?: "")
-                        try {
-                            startActivity(
-                                Intent(Intent.ACTION_VIEW, Uri.parse("geo:$lat,$lng?q=$lat,$lng($label)"))
-                            )
-                            result.success(true)
-                        } catch (_: Exception) {
-                            result.success(false)
-                        }
-                    }
                     else -> result.notImplemented()
                 }
             }
@@ -76,8 +84,6 @@ class MainActivity : FlutterActivity() {
                     "status" -> result.success(
                         mapOf(
                             "bluetooth" to granted("bluetooth"),
-                            "location" to granted("location"),
-                            "location_bg" to granted("location_bg"),
                             "notification" to granted("notification"),
                         )
                     )
@@ -111,17 +117,6 @@ class MainActivity : FlutterActivity() {
         "bluetooth" ->
             if (Build.VERSION.SDK_INT >= 31)
                 arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
-            else
-                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
-        "location" -> arrayOf(
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION
-        )
-        // "Her zaman izin ver": uygulama kapalıyken son görülen konumu kaydetmek için.
-        // Android 11+ bunu ayrı ister ve sistem ayar sayfasına yönlendirir.
-        "location_bg" ->
-            if (Build.VERSION.SDK_INT >= 29)
-                arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
             else
                 arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
         "notification" ->

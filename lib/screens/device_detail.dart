@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../map_view.dart';
 import '../models.dart';
 import '../tag_connection.dart';
 import '../theme.dart';
@@ -128,15 +127,6 @@ class DeviceDetailScreen extends StatelessWidget {
               const SizedBox(height: 16),
               ..._mainAction(context, c),
               const SizedBox(height: 16),
-              NavRow(
-                icon: Icons.location_on_outlined,
-                title: 'Son Görülen Konum',
-                subtitle: (c.sighting?.hasLocation ?? false)
-                    ? relativeTime(c.sighting!.seenAt)
-                    : 'Konum kaydı yok',
-                onTap: () => _push(context, LastLocationScreen(conn: c)),
-              ),
-              const SizedBox(height: 10),
               NavRow(
                 icon: Icons.notifications_none,
                 title: 'Kayıp Modu',
@@ -650,49 +640,6 @@ class DeviceInfoScreen extends StatelessWidget {
               ),
             ],
           ),
-        );
-      },
-    );
-  }
-}
-
-/// Sayfa 08 (cihaz) — Son Görülen Konum.
-class LastLocationScreen extends StatelessWidget {
-  const LastLocationScreen({super.key, required this.conn});
-  final TagConnection conn;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: conn,
-      builder: (context, _) {
-        final hasLoc = conn.sighting?.hasLocation ?? false;
-        return Scaffold(
-          appBar: AppBar(title: const Text('Son Görülen Konum')),
-          body: !hasLoc
-              ? EmptyState(
-                  icon: Icons.location_off_outlined,
-                  title: 'Bu cihazın kaydedilmiş son konumu yok.',
-                  message: 'Telefon bu cihazı duyduğunda (ya da bağlandığında) '
-                      'konum kaydedilir. Konum izninin verildiğinden emin ol.',
-                  actionLabel: 'Konum ayarları',
-                  onAction: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const LocationSettingsPage())),
-                )
-              : ListView(
-                  padding: pagePadding(context, top: 4),
-                  children: [
-                    TagMap(conns: [conn], height: 380),
-                    const SizedBox(height: 16),
-                    SightingCard(conn: conn),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Gösterilen yer, telefonun cihazı en son duyduğu andaki '
-                      'kendi konumudur; cihazın canlı konumu değildir.',
-                      style: TextStyle(color: AppColors.text2, fontSize: 12),
-                    ),
-                  ],
-                ),
         );
       },
     );
