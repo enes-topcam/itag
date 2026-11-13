@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -10,7 +10,7 @@ import '../widgets.dart';
 import 'connect_flow.dart';
 import 'home_shell.dart';
 
-/// Sayfa 04 â€” KeÅŸfet / Bluetooth (BLE) cihazlarÄ±
+/// Sayfa 04 — Keşfet / Bluetooth (BLE) cihazları
 class DiscoverTab extends StatefulWidget {
   const DiscoverTab({super.key, required this.active});
   final bool active;
@@ -32,8 +32,8 @@ class _DiscoverTabState extends State<DiscoverTab> {
   @override
   void initState() {
     super.initState();
-    // Sadece kullanÄ±cÄ±nÄ±n baÅŸlattÄ±ÄŸÄ± taramanÄ±n sonuÃ§larÄ± (otomatik baÄŸlanma
-    // taramalarÄ± listeyi bozmasÄ±n).
+    // Sadece kullanıcının başlattığı taramanın sonuçları (otomatik bağlanma
+    // taramaları listeyi bozmasın).
     _scanSub = FlutterBluePlus.onScanResults.listen((results) {
       if (!_scanning) return;
       for (final r in results) {
@@ -83,7 +83,7 @@ class _DiscoverTabState extends State<DiscoverTab> {
         await FlutterBluePlus.turnOn();
       } catch (_) {}
     } else {
-      showSnack(context, "Bluetooth'u Denetim Merkezi'nden aÃ§abilirsin.");
+      showSnack(context, "Bluetooth'u Denetim Merkezi'nden açabilirsin.");
     }
   }
 
@@ -97,12 +97,12 @@ class _DiscoverTabState extends State<DiscoverTab> {
       _error = null;
     });
     try {
-      // Sonsuz tarama yerine zaman sÄ±nÄ±rlÄ± oturum (dokÃ¼man Â§7).
+      // Sonsuz tarama yerine zaman sınırlı oturum (doküman §7).
       await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
     } catch (e) {
       _scanning = false;
       tagManager.resumeSearch();
-      setState(() => _error = 'Tarama baÅŸlatÄ±lamadÄ±. Ä°zinleri kontrol et.');
+      setState(() => _error = 'Tarama başlatılamadı. İzinleri kontrol et.');
     }
   }
 
@@ -146,7 +146,7 @@ class _DiscoverTabState extends State<DiscoverTab> {
         final btOff = tagManager.adapterState == BluetoothAdapterState.off;
         return Scaffold(
           appBar: AppBar(
-            title: const Text('Bluetooth CihazlarÄ±'),
+            title: const Text('Bluetooth Cihazları'),
             actions: [
               IconButton(
                 tooltip: _scanning ? 'Durdur' : 'Yeniden tara',
@@ -165,7 +165,7 @@ class _DiscoverTabState extends State<DiscoverTab> {
                 child: TextField(
                   controller: _search,
                   decoration: const InputDecoration(
-                    hintText: 'Cihaz araâ€¦',
+                    hintText: 'Cihaz ara…',
                     prefixIcon: Icon(Icons.search, color: AppColors.text2),
                   ),
                 ),
@@ -182,7 +182,7 @@ class _DiscoverTabState extends State<DiscoverTab> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       ),
                       const SizedBox(width: 8),
-                      const Text('Tarama devam ediyorâ€¦',
+                      const Text('Tarama devam ediyor…',
                           style: TextStyle(
                               color: AppColors.accentLight, fontSize: 13)),
                     ] else
@@ -194,8 +194,8 @@ class _DiscoverTabState extends State<DiscoverTab> {
                     const Spacer(),
                     FilterChip(
                       label: Text(_showUnnamed
-                          ? 'Ä°simsizler gÃ¶steriliyor'
-                          : 'Ä°simsizler ($hiddenUnnamed)'),
+                          ? 'İsimsizler gösteriliyor'
+                          : 'İsimsizler ($hiddenUnnamed)'),
                       selected: _showUnnamed,
                       showCheckmark: false,
                       onSelected: (v) => setState(() => _showUnnamed = v),
@@ -217,14 +217,14 @@ class _DiscoverTabState extends State<DiscoverTab> {
     if (btOff) {
       return const EmptyState(
         icon: Icons.bluetooth_disabled,
-        title: 'Bluetooth kapalÄ±',
-        message: "CihazlarÄ± taramak iÃ§in Bluetooth'u aÃ§.",
+        title: 'Bluetooth kapalı',
+        message: "Cihazları taramak için Bluetooth'u aç.",
       );
     }
     if (_error != null) {
       return EmptyState(
         icon: Icons.error_outline,
-        title: 'Tarama hatasÄ±',
+        title: 'Tarama hatası',
         message: _error,
         actionLabel: 'Yeniden Tara',
         onAction: _startScan,
@@ -234,17 +234,17 @@ class _DiscoverTabState extends State<DiscoverTab> {
       if (_scanning) {
         return const EmptyState(
           icon: Icons.bluetooth_searching,
-          title: 'Bluetooth cihazlarÄ± taranÄ±yorâ€¦',
-          message: 'Takip cihazÄ±nÄ± uyandÄ±rmak iÃ§in dÃ¼ÄŸmesine bir kez bas.',
+          title: 'Bluetooth cihazları taranıyor…',
+          message: 'Takip cihazını uyandırmak için düğmesine bir kez bas.',
         );
       }
       return EmptyState(
         icon: Icons.bluetooth_searching,
         title: _scannedOnce
-            ? 'YakÄ±nda cihaz bulunamadÄ±.'
-            : 'YakÄ±ndaki cihazlarÄ± bul',
-        message: 'Takip cihazÄ±nÄ± uyandÄ±rmak iÃ§in dÃ¼ÄŸmesine bir kez bas.',
-        actionLabel: _scannedOnce ? 'Yeniden Tara' : 'TaramayÄ± BaÅŸlat',
+            ? 'Yakında cihaz bulunamadı.'
+            : 'Yakındaki cihazları bul',
+        message: 'Takip cihazını uyandırmak için düğmesine bir kez bas.',
+        actionLabel: _scannedOnce ? 'Yeniden Tara' : 'Taramayı Başlat',
         onAction: _startScan,
       );
     }
@@ -301,7 +301,7 @@ class _ResultCard extends StatelessWidget {
               children: [
                 Row(children: [
                   Flexible(
-                    child: Text(name.isEmpty ? 'Ä°simsiz cihaz' : name,
+                    child: Text(name.isEmpty ? 'İsimsiz cihaz' : name,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                             fontSize: 15, fontWeight: FontWeight.w600)),
@@ -315,7 +315,7 @@ class _ResultCard extends StatelessWidget {
                         color: AppColors.accent.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Text('KayÄ±tlÄ±',
+                      child: const Text('Kayıtlı',
                           style: TextStyle(
                               fontSize: 11, color: AppColors.accentLight)),
                     ),
@@ -323,7 +323,7 @@ class _ResultCard extends StatelessWidget {
                 ]),
                 const SizedBox(height: 4),
                 Row(children: [
-                  Text('BLE Â· Sinyal ${signalLabel(result.rssi).toLowerCase()}',
+                  Text('BLE · Sinyal ${signalLabel(result.rssi).toLowerCase()}',
                       style: const TextStyle(
                           color: AppColors.text2, fontSize: 13)),
                   const SizedBox(width: 6),
@@ -345,7 +345,7 @@ class _ResultCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: onTap,
-                  child: const Text('BaÄŸlan'),
+                  child: const Text('Bağlan'),
                 ),
         ],
       ),
