@@ -128,7 +128,6 @@ class TagConnection extends ChangeNotifier {
   Timer? _rssiTimer;
   Timer? _alarmTimer;
   bool _stopping = false;
-  bool _wasConnected = false;
   bool _dumped = false;
   final List<DateTime> _recentPresses = [];
 
@@ -143,20 +142,39 @@ class TagConnection extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> start() async {
+  /// Bağlantı durumunu dinlemeye başlar. Asıl bağlanmayı [TagManager]
+  /// yapar: etiketi taramada görünce [connectNow] çağırır.
+  ///
+  /// Neden Android'in autoConnect'ini kullanmıyoruz? autoConnect, sistemin
+  /// düşük güçlü arka plan taramasına dayanır; bağlanması dakikalar
+  /// sürebilir, bazı telefonlarda (özellikle Samsung) hiç bağlanmaz.
+  /// Hedefli tarama + doğrudan bağlantı saniyeler içinde bağlanır.
+  void start() {
     _stopping = false;
     _connSub?.cancel();
     _connSub = device.connectionState.listen(_onState);
-    _log('Bağlantı bekleniyor (otomatik)...');
+    _log('Etiket aranıyor...');
+  }
+
+  bool _connecting = false;
+
+  /// Bağlanmaya çalışmalı mıyız?
+  bool get needsConnection => !_stopping && !isConnected && !_connecting;
+
+  Future<void> connectNow() async {
+    if (!needsConnection) return;
+    _connecting = true;
+    _log('Etiket görüldü, bağlanılıyor...');
     try {
-      // mtu:null zorunlu: autoConnect ile MTU isteği uyumsuz.
       await device.connect(
         license: License.nonprofit,
-        autoConnect: true,
+        timeout: const Duration(seconds: 10),
         mtu: null,
       );
     } catch (e) {
-      _log('Bağlantı isteği hatası: $e');
+      _log('Bağlanılamadı, tekrar denenecek');
+    } finally {
+      _connecting = false;
     }
   }
 
@@ -172,10 +190,10 @@ class TagConnection extends ChangeNotifier {
   }
 
   Future<void> _onState(BluetoothConnectionState s) async {
+    final wasConnectedBefore = state == BluetoothConnectionState.connected;
     state = s;
     notifyListeners();
     if (s == BluetoothConnectionState.connected) {
-      _wasConnected = true;
       _log('Bağlandı');
       if (lostAlarm) {
         lostAlarm = false;
@@ -190,7 +208,9 @@ class TagConnection extends ChangeNotifier {
       trusted = false;
       ringing = false;
       rssi = null;
-      if (_wasConnected && !_stopping) {
+      // Sadece gerçekten bağlıyken kopma alarm sayılır; başarısız bağlanma
+      // denemeleri alarm çaldırmasın.
+      if (wasConnectedBefore && !_stopping) {
         _log('BAĞLANTI KOPTU! Etiket uzakta olabilir.');
         lostAlarm = true;
         _startAlarm();
@@ -332,11 +352,16 @@ class TagConnection extends ChangeNotifier {
   }
 }
 
-/// Uygulama genelinde tüm kayıtlı etiketlerin bağlantılarını tutar.
+/// Uygulama genelinde tüm kayıtlı etiketlerin bağlantılarını tutar ve
+/// bağlı olmayan kayıtlı etiketleri hedefli taramayla arayıp bağlar.
 class TagManager extends ChangeNotifier {
   final Map<String, TagConnection> _conns = {};
   List<SavedTag> _tags = [];
   bool loaded = false;
+
+  Timer? _loop;
+  StreamSubscription<List<ScanResult>>? _scanSub;
+  bool _paused = false;
 
   List<TagConnection> get connections =>
       _tags.map((t) => _conns[t.id]!).toList();
@@ -353,6 +378,59 @@ class TagManager extends ChangeNotifier {
     }
     loaded = true;
     notifyListeners();
+
+    // Sadece bu taramadan gelen sonuçlar (birikmiş eski sonuçlar değil).
+    _scanSub = FlutterBluePlus.onScanResults.listen(_onScanResults);
+    _loop = Timer.periodic(const Duration(seconds: 3), (_) => _tick());
+    _tick();
+  }
+
+  @override
+  void dispose() {
+    _loop?.cancel();
+    _scanSub?.cancel();
+    super.dispose();
+  }
+
+  /// "Etiket Ekle" ekranı kendi taramasını yaparken arka plan aramasını durdur.
+  Future<void> pauseSearch() async {
+    _paused = true;
+    if (FlutterBluePlus.isScanningNow) await FlutterBluePlus.stopScan();
+  }
+
+  void resumeSearch() {
+    _paused = false;
+    _tick();
+  }
+
+  Future<void> _tick() async {
+    if (_paused || FlutterBluePlus.isScanningNow) return;
+    if (FlutterBluePlus.adapterStateNow != BluetoothAdapterState.on) return;
+    final ids = _conns.values
+        .where((c) => c.needsConnection)
+        .map((c) => c.device.remoteId.str)
+        .toList();
+    if (ids.isEmpty) return;
+    try {
+      await FlutterBluePlus.startScan(
+        withRemoteIds: ids,
+        timeout: const Duration(seconds: 8),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _onScanResults(List<ScanResult> results) async {
+    if (_paused) return;
+    for (final r in results) {
+      final c = _conns[r.device.remoteId.str];
+      if (c != null && c.needsConnection) {
+        // Bağlanırken taramayı kapat: Android'de aynı anda tarama +
+        // bağlanma bağlantıyı yavaşlatıp bozabiliyor.
+        await FlutterBluePlus.stopScan();
+        await c.connectNow();
+        return; // döngü bir sonraki tick'te diğerlerine bakar
+      }
+    }
   }
 
   Future<void> add(SavedTag tag) async {
