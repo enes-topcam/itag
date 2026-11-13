@@ -242,7 +242,7 @@ adb install -r build/app/outputs/flutter-apk/app-release.apk
 
 Android her APK'nın imzalı olmasını ister. Bir uygulama ancak aynı anahtarla imzalanmış bir sürümün üstüne kurulabilir.
 
-- Şu an release sürümü de bilgisayardaki debug anahtarıyla imzalanıyor: `C:\Users\user\.android\debug.keystore`.
+- Şu an release sürümü de bilgisayardaki debug anahtarıyla imzalanıyor: `%USERPROFILE%\.android\debug.keystore`.
 - Bu anahtar kaybolursa güncelleme kurulamaz. Uygulamayı silip yeniden kurmak gerekir ve kayıtlı cihazlar gider. **Anahtarı yedekle.**
 - Play Store'a yüklenecekse ayrı bir release anahtarı (upload key) oluşturulmalı.
 
@@ -291,7 +291,7 @@ Bu projenin en öğretici kısmı bu bölüm. Birçok özellik çalışır hale 
 
 Kod iOS'u düşünerek yazıldı ama hiç derlenmedi. Dikkat edilecek noktalar:
 
-- **Cihaz kimliği:** iOS MAC adresini göstermez, her telefon cihaza kendi UUID'sini verir. Bu yüzden etiket abinin iPhone'unda yeniden eklenmeli. Android'deki kayıt taşınamaz.
+- **Cihaz kimliği:** iOS MAC adresini göstermez, her telefon cihaza kendi UUID'sini verir. Bu yüzden etiket iPhone'da yeniden eklenmeli. Android'deki kayıt taşınamaz.
 - **Bluetooth açma:** iOS'ta uygulama Bluetooth'u kendisi açamaz. Kullanıcı Denetim Merkezi'nden açmalı.
 - **İzin:** İlk Bluetooth erişiminde sistem `NSBluetoothAlwaysUsageDescription` metniyle izin sorar. Bu metin `Info.plist` içinde hazır.
 - **Kurulum seçenekleri:**
