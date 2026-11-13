@@ -55,7 +55,11 @@ object Notifier {
 
     fun keepAlive(ctx: Context, count: Int): Notification {
         ensureChannels(ctx)
-        val text = if (count == 1) "1 cihaz korunuyor" else "$count cihaz korunuyor"
+        val text = when {
+            count < 0 -> "Cihazlara yeniden bağlanılıyor"
+            count == 1 -> "1 cihaz korunuyor"
+            else -> "$count cihaz korunuyor"
+        }
         return builder(ctx, CH_KEEPALIVE)
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setContentTitle("TPCM Find çalışıyor")
