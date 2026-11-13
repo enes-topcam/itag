@@ -50,7 +50,7 @@ dev_dependencies:
   flutter_launcher_icons: ^0.14.4
 
 # Uygulama ikonu: `dart run flutter_launcher_icons` ile tüm boyutlar üretilir.
-# Kaynak: "Mor Işıklı Konum Takipçisi.png" (köşeleri kırpılmış, 1024 px).
+# Kaynak: docs/design/ikon-kaynak.png (köşeleri kırpılmış, 1024 px).
 flutter_launcher_icons:
   image_path: "assets/icon/app_icon.png"
   android: true
