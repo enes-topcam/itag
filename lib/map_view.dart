@@ -9,8 +9,9 @@ import 'widgets.dart';
 
 /// Cihazların son görülen konumlarını gösteren koyu temalı harita.
 ///
-/// Altlık: CARTO "dark_all" — OpenStreetMap verisi, ücretsiz, anahtarsız.
-/// (Kişisel/ticari olmayan kullanım için; atıf zorunlu.)
+/// Altlık: OpenStreetMap'in kendi karoları (anahtarsız; atıf ve User-Agent
+/// zorunlu, yoğun kullanım için uygun değil). Koyu tema için renkler ters
+/// çevrilir. (CARTO 2026'da anahtar istemeye başladı — "API KEY REQUIRED".)
 class TagMap extends StatelessWidget {
   const TagMap({super.key, required this.conns, this.height = 320});
 
@@ -43,12 +44,13 @@ class TagMap extends StatelessWidget {
           ),
           children: [
             TileLayer(
-              urlTemplate:
-                  'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-              subdomains: const ['a', 'b', 'c', 'd'],
-              retinaMode: RetinaMode.isHighDensity(context),
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              // OSM kullanım politikası: uygulamayı tanıtan User-Agent zorunlu.
               userAgentPackageName: 'com.itagtracker.itag_app',
               maxNativeZoom: 19,
+              // OSM karoları açık renkli; koyu temaya uydurmak için renkleri
+              // ters çevir.
+              tileBuilder: darkModeTileBuilder,
             ),
             // Konumun yaklaşık hassasiyeti (ağ konumu ~20-100 m).
             CircleLayer(
@@ -77,9 +79,19 @@ class TagMap extends StatelessWidget {
                   ),
               ],
             ),
-            const SimpleAttributionWidget(
-              source: Text('© OpenStreetMap · © CARTO',
-                  style: TextStyle(fontSize: 10, color: Colors.black87)),
+            // OSM lisansı gereği atıf (sade, koyu temaya uygun).
+            Align(
+              alignment: Alignment.bottomRight,
+              child: Container(
+                margin: const EdgeInsets.all(6),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Text('© OpenStreetMap katkıcıları',
+                    style: TextStyle(fontSize: 10, color: AppColors.text2)),
+              ),
             ),
           ],
         ),
