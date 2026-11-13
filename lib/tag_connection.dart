@@ -4,16 +4,15 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
-import 'tag_store.dart';
+import 'models.dart';
 
-/// iTag tipi ucuz BLE etiketlerin GATT UUID'leri.
+/// iTag tipi ucuz BLE etiketlerin GATT UUID'leri (gerçek cihazda doğrulandı:
+/// 1802/2A06 writeNoResp, 180F/2A19, FFE0/FFE1 notify [1]; 1803 YOK).
 class ItagUuids {
   // Immediate Alert: etiketi öttürmek için (0x00 sus, 0x01 hafif, 0x02 yüksek)
   static final immediateAlertService = Guid('1802');
   static final alertLevel = Guid('2A06');
-  // Link Loss: bağlantı koparsa etiketin KENDİ çalacağı alarm seviyesi.
-  // Biz bunu 0x00 yapıp kopma alarmını telefona bırakıyoruz; yoksa etiket
-  // her kopmada (bağlanma denemeleri dahil) öter.
+  // Link Loss: bazı modellerde var; varsa kendi kopma bip'ini kapatırız.
   static final linkLossService = Guid('1803');
   // Etiket üzerindeki düğme bildirimi (üreticiye özel)
   static final buttonService = Guid('FFE0');
@@ -23,8 +22,8 @@ class ItagUuids {
   static final batteryLevel = Guid('2A19');
 }
 
-/// Bağlanılan cihazın gerçekten bir iTag gibi görünüp görünmediğini kontrol
-/// eder ("parmak izi"). Taklidi zorlaştırır ama tamamen engellemez.
+/// Bağlanılan cihazın iTag gibi davranıp davranmadığını kontrol eder
+/// ("parmak izi"). Taklidi zorlaştırır ama tamamen engellemez.
 class ItagFingerprint {
   ItagFingerprint(List<BluetoothService> services) {
     for (final s in services) {
@@ -59,7 +58,6 @@ class ItagFingerprint {
   static Future<void> _write(BluetoothCharacteristic c, int v) =>
       c.write([v], withoutResponse: c.properties.writeWithoutResponse);
 
-  /// Etiketin kendi kopma alarmını kapatır. Varsa true döner.
   Future<bool> disableLinkLossBeep() async {
     final c = linkLossChar;
     if (c == null) return false;
@@ -79,7 +77,6 @@ class ItagFingerprint {
     }
   }
 
-  /// Tüm servis/karakteristikleri okunabilir satırlar halinde döker.
   static List<String> describe(List<BluetoothService> services) {
     final out = <String>[];
     for (final s in services) {
@@ -92,33 +89,37 @@ class ItagFingerprint {
           if (p.writeWithoutResponse) 'writeNoResp',
           if (p.notify) 'notify',
           if (p.indicate) 'indicate',
-        ].join(',');
-        out.add('   └ ${c.uuid.str} [$props]');
+        ].join(', ');
+        out.add('   └ ${c.uuid.str}  [$props]');
       }
     }
     return out;
   }
 }
 
-/// Kayıtlı tek bir cihazla olan bağlantıyı yönetir.
-///
-/// - Otomatik bağlan açıksa [TagManager] cihazı görünce [connectNow] çağırır.
-/// - Biz bağlıyken iTag reklam yayınını keser; başkası bağlanamaz.
-/// - Otomatik bağlan açık bir cihaz beklenmedik şekilde koparsa alarm çalar.
-class TagConnection extends ChangeNotifier {
-  TagConnection(this.tag) : device = BluetoothDevice.fromId(tag.id);
+/// Arayüzde gösterilen bağlantı durumu (doküman §3 "Ortak durum bileşenleri").
+enum LinkStatus { connected, connecting, lost, offline, suspicious }
 
-  SavedTag tag;
+/// Kayıtlı tek bir cihazla olan bağlantıyı yönetir.
+class TagConnection extends ChangeNotifier {
+  TagConnection(this.saved) : device = BluetoothDevice.fromId(saved.id);
+
+  SavedDevice saved;
   final BluetoothDevice device;
+
+  /// Kayıtlı bilgiler (son görülme vb.) değişince çağrılır; TagManager kaydeder.
+  void Function(SavedDevice)? onPersist;
 
   BluetoothConnectionState state = BluetoothConnectionState.disconnected;
   int? rssi;
   int? battery;
+  bool batterySupported = false;
   int buttonPresses = 0;
   bool ringing = false;
-  bool trusted = false; // iTag parmak izi kontrolünden geçti mi
-  bool suspicious = false; // kayıtlı iTag kimliğiyle sahte cihaz çıktı
-  bool lostAlarm = false; // bağlantı beklenmedik şekilde koptu
+  bool trusted = false;
+  bool suspicious = false;
+  bool lostAlarm = false;
+  List<String> gattLines = const [];
   final List<String> log = [];
 
   BluetoothCharacteristic? _alertChar;
@@ -126,27 +127,25 @@ class TagConnection extends ChangeNotifier {
   StreamSubscription? _buttonSub;
   Timer? _rssiTimer;
   Timer? _alarmTimer;
-  bool _stopping = false; // cihaz siliniyor
-  bool _hold = false; // kullanıcı bağlantıyı elle kesti
+  Timer? _ringTimer;
+  bool _stopping = false;
+  bool _hold = false;
   bool _connecting = false;
-  bool _dumped = false;
   final List<DateTime> _recentPresses = [];
 
   bool get isConnected => state == BluetoothConnectionState.connected;
   bool get isConnecting => _connecting;
   bool get canRing => isConnected && trusted && _alertChar != null;
 
-  /// TagManager'ın bu cihazı arayıp otomatik bağlanması gerekiyor mu?
   bool get needsAutoConnect =>
-      tag.autoConnect && !_stopping && !_hold && !isConnected && !_connecting;
+      saved.autoConnect && !_stopping && !_hold && !isConnected && !_connecting;
 
-  String get statusText {
-    if (lostAlarm) return 'BAĞLANTI KOPTU';
-    if (isConnected) return 'Bağlı · ${rssi ?? '-'} dBm';
-    if (_connecting) return 'Bağlanıyor...';
-    if (suspicious) return 'Şüpheli cihaz, bağlanılmadı';
-    if (tag.autoConnect && !_hold) return 'Aranıyor...';
-    return 'Bağlı değil';
+  LinkStatus get status {
+    if (lostAlarm) return LinkStatus.lost;
+    if (isConnected) return LinkStatus.connected;
+    if (_connecting) return LinkStatus.connecting;
+    if (suspicious) return LinkStatus.suspicious;
+    return LinkStatus.offline;
   }
 
   void _log(String m) {
@@ -157,13 +156,17 @@ class TagConnection extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _persist(SavedDevice d) {
+    saved = d;
+    onPersist?.call(d);
+  }
+
   void start() {
     _stopping = false;
     _connSub?.cancel();
     _connSub = device.connectionState.listen(_onState);
   }
 
-  /// [manual]: kullanıcı "Bağlan"a bastı (elle kesme kilidini kaldırır).
   Future<void> connectNow({bool manual = false}) async {
     if (_stopping || isConnected || _connecting) return;
     if (manual) {
@@ -171,7 +174,8 @@ class TagConnection extends ChangeNotifier {
       suspicious = false;
     }
     _connecting = true;
-    _log(manual ? 'Bağlanılıyor...' : 'Cihaz görüldü, bağlanılıyor...');
+    notifyListeners();
+    _log(manual ? 'Bağlanılıyor…' : 'Cihaz görüldü, bağlanılıyor…');
     try {
       await device.connect(
         license: License.nonprofit,
@@ -179,15 +183,14 @@ class TagConnection extends ChangeNotifier {
         mtu: null,
       );
     } catch (e) {
-      _log('Bağlanılamadı${tag.autoConnect ? ', tekrar denenecek' : ''}');
+      _log('Bağlanılamadı${saved.autoConnect ? ', tekrar denenecek' : ''}');
     } finally {
       _connecting = false;
       notifyListeners();
     }
   }
 
-  /// Kullanıcı bağlantıyı elle kesti: alarm çalmaz, otomatik bağlanmaz
-  /// (tekrar "Bağlan"a basılana kadar).
+  /// Kullanıcı bağlantıyı bilerek kesti: yanlış alarm verilmez (doküman §12).
   Future<void> disconnectManually() async {
     _hold = true;
     lostAlarm = false;
@@ -201,6 +204,7 @@ class TagConnection extends ChangeNotifier {
   Future<void> stop() async {
     _stopping = true;
     _stopAlarm();
+    _ringTimer?.cancel();
     _rssiTimer?.cancel();
     _buttonSub?.cancel();
     _connSub?.cancel();
@@ -215,24 +219,30 @@ class TagConnection extends ChangeNotifier {
     notifyListeners();
     if (s == BluetoothConnectionState.connected) {
       _log('Bağlandı');
+      final now = DateTime.now();
+      _persist(saved.copyWith(lastConnectedAt: now, lastSeenAt: now));
       if (lostAlarm) {
         lostAlarm = false;
         _stopAlarm();
-        _log('Cihaz geri geldi, alarm durdu');
+        _log('Cihaz geri geldi, uyarı durdu');
       }
       await _setup();
     } else if (s == BluetoothConnectionState.disconnected) {
       _rssiTimer?.cancel();
+      _ringTimer?.cancel();
       _buttonSub?.cancel();
       _alertChar = null;
       trusted = false;
       ringing = false;
       rssi = null;
-      // Sadece gerçekten bağlıyken, kullanıcı kesmeden kopma alarm sayılır.
+      if (wasConnectedBefore) {
+        _persist(saved.copyWith(lastSeenAt: DateTime.now()));
+      }
       if (wasConnectedBefore && !_stopping && !_hold) {
-        _log('BAĞLANTI KOPTU!');
-        if (tag.autoConnect) {
+        _log('Bağlantı kesildi');
+        if (saved.alertOnDisconnect && appSettings.alertsEnabled) {
           lostAlarm = true;
+          _persist(saved.copyWith(lastAlertAt: DateTime.now()));
           _startAlarm();
         }
       }
@@ -244,36 +254,21 @@ class TagConnection extends ChangeNotifier {
     try {
       final services = await device.discoverServices();
       final fp = ItagFingerprint(services);
+      gattLines = ItagFingerprint.describe(services);
 
-      if (!_dumped) {
-        _dumped = true;
-        // log en yeni üstte olduğu için ters sırayla ekle
-        for (final l in ItagFingerprint.describe(services).reversed) {
-          _log(l);
-        }
-        _log('--- GATT tablosu ---');
-      }
-
-      if (tag.isItag) {
+      if (saved.isItag) {
         if (!fp.looksLikeItag) {
-          // Kayıtlı iTag kimliğiyle bağlanan cihaz beklenen servislere sahip
-          // değil: taklit olabilir. Komut göndermeden ayrıl.
           suspicious = true;
           _hold = true;
-          _log('UYARI: Cihaz iTag parmak izine uymuyor, bağlantı kesildi');
+          _log('UYARI: Cihaz kayıtlı iTag gibi davranmıyor, bağlantı kesildi');
           await device.disconnect();
           return;
         }
-        // İlk iş: etiketin kendi kopma bip'ini kapat.
         try {
           if (await fp.disableLinkLossBeep()) {
-            _log('Etiketin kendi kopma alarmı kapatıldı (1803)');
-          } else {
-            _log('Etikette Link Loss (1803) servisi yok');
+            _log('Etiketin kendi kopma alarmı kapatıldı');
           }
-        } catch (e) {
-          _log('Link Loss yazılamadı: $e');
-        }
+        } catch (_) {}
         trusted = true;
         _alertChar = fp.alertChar;
         await fp.buttonChar!.setNotifyValue(true);
@@ -282,10 +277,10 @@ class TagConnection extends ChangeNotifier {
       }
 
       final b = fp.batteryChar;
-      if (b != null && b.properties.read) {
+      batterySupported = b != null && b.properties.read;
+      if (batterySupported) {
         try {
-          final v = await b.read();
-          // Pil 0-100 aralığında olmalı; dışındaysa güvenme.
+          final v = await b!.read();
           if (v.length == 1 && v.first <= 100) battery = v.first;
         } catch (_) {}
       }
@@ -297,20 +292,19 @@ class TagConnection extends ChangeNotifier {
           notifyListeners();
         } catch (_) {}
       });
-      _log(tag.isItag ? 'Hazır (iTag doğrulandı)' : 'Hazır');
-      if (tag.isItag) await fp.connectedChirp();
+      _log(saved.isItag ? 'Hazır (iTag doğrulandı)' : 'Hazır');
+      notifyListeners();
+      if (saved.isItag) await fp.connectedChirp();
     } catch (e) {
       _log('Kurulum hatası: $e');
     }
   }
 
   void _onButton(List<int> value) {
-    // 1) Doğrulama: iTag düğmesi her zaman tek byte 0x01 gönderir.
     if (value.length != 1 || value.first != 0x01) {
       _log('Beklenmeyen veri yok sayıldı: $value');
       return;
     }
-    // 2) Hız sınırı: 2 saniyede 5'ten fazla bildirim normal değil.
     final now = DateTime.now();
     _recentPresses
         .removeWhere((t) => now.difference(t) > const Duration(seconds: 2));
@@ -319,14 +313,13 @@ class TagConnection extends ChangeNotifier {
       _log('Çok hızlı bildirim, yok sayıldı');
       return;
     }
-
     buttonPresses++;
-    _log('Düğmeye basıldı');
-    // Şimdilik titreşim + sistem sesi. Gerçek alarm sesi sonraki adımda.
+    _log('Cihazın düğmesine basıldı');
     HapticFeedback.heavyImpact();
     SystemSound.play(SystemSoundType.alert);
   }
 
+  /// Ses çaldır: 30 sn sonra kendiliğinden durur (süreli çalma, doküman §10).
   Future<void> setTagAlert(bool on) async {
     final c = _alertChar;
     if (c == null || !trusted) return;
@@ -334,20 +327,29 @@ class TagConnection extends ChangeNotifier {
       await c.write([on ? 0x02 : 0x00],
           withoutResponse: c.properties.writeWithoutResponse);
       ringing = on;
-      _log(on ? 'Etiket öttürülüyor' : 'Etiket susturuldu');
+      _ringTimer?.cancel();
+      if (on) {
+        _ringTimer = Timer(const Duration(seconds: 30), () => setTagAlert(false));
+      }
+      // Etiket geri bildirim vermediği için ihtiyatlı ifade (doküman §10).
+      _log(on ? 'Ses komutu gönderildi' : 'Durdurma komutu gönderildi');
     } catch (e) {
-      _log('Yazma hatası: $e');
+      _log('Komut gönderilemedi: $e');
     }
   }
 
-  // Telefon tarafı kayıp alarmı (şimdilik titreşim + sistem sesi döngüsü).
   void _startAlarm() {
     _alarmTimer?.cancel();
     var count = 0;
+    void beep() {
+      if (appSettings.alertVibrate) HapticFeedback.heavyImpact();
+      if (appSettings.alertSound) SystemSound.play(SystemSoundType.alert);
+    }
+
+    beep();
     _alarmTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-      HapticFeedback.heavyImpact();
-      SystemSound.play(SystemSoundType.alert);
-      if (++count >= 30) t.cancel(); // en fazla 30 sn
+      beep();
+      if (++count >= 30) t.cancel();
     });
   }
 
@@ -377,16 +379,14 @@ class TagConnection extends ChangeNotifier {
   }
 }
 
-/// Uygulama genelinde tüm kayıtlı cihazların bağlantılarını tutar ve
-/// otomatik bağlan açık olan, bağlı olmayan cihazları hedefli taramayla
-/// arayıp bağlar.
+/// Tüm kayıtlı cihazların bağlantılarını tutar; otomatik bağlan açık olanları
+/// hedefli taramayla arayıp doğrudan bağlar.
 ///
-/// Neden Android'in autoConnect'ini kullanmıyoruz? O, sistemin düşük güçlü
-/// arka plan taramasına dayanır; bağlanması dakikalar sürebilir, bazı
-/// telefonlarda (özellikle Samsung) hiç bağlanmaz.
+/// Neden Android autoConnect değil? Sistemin yavaş arka plan taramasına
+/// dayanır; Samsung'da test ederken hiç bağlanmadı.
 class TagManager extends ChangeNotifier {
   final Map<String, TagConnection> _conns = {};
-  List<SavedTag> _tags = [];
+  List<SavedDevice> _devices = [];
   bool loaded = false;
   BluetoothAdapterState adapterState = BluetoothAdapterState.unknown;
 
@@ -396,28 +396,27 @@ class TagManager extends ChangeNotifier {
   bool _paused = false;
 
   List<TagConnection> get connections =>
-      _tags.map((t) => _conns[t.id]!).toList();
+      _devices.map((d) => _conns[d.id]!).toList();
 
   TagConnection? get(String id) => _conns[id];
   bool isSaved(String id) => _conns.containsKey(id);
 
   Future<void> init() async {
-    // ÖNEMLİ: adapterStateNow ancak biri adapterState'i dinlerken güncellenir.
-    // Dinlemezsek uygulama Bluetooth'u hep "bilinmiyor" sanıp hiç aramaz.
+    // adapterStateNow ancak biri adapterState'i dinlerken güncellenir;
+    // dinlemezsek Bluetooth'u hep "bilinmiyor" sanıp hiç aramayız.
     _adapterSub = FlutterBluePlus.adapterState.listen((s) {
       adapterState = s;
       notifyListeners();
       if (s == BluetoothAdapterState.on) _tick();
     });
 
-    _tags = await TagStore.load();
-    for (final t in _tags) {
-      _attach(TagConnection(t));
+    _devices = await DeviceStore.load();
+    for (final d in _devices) {
+      _attach(TagConnection(d));
     }
     loaded = true;
     notifyListeners();
 
-    // Sadece aktif taramadan gelen sonuçlar.
     _scanSub = FlutterBluePlus.onScanResults.listen(_onScanResults);
     _loop = Timer.periodic(const Duration(seconds: 3), (_) => _tick());
     _tick();
@@ -425,8 +424,15 @@ class TagManager extends ChangeNotifier {
 
   void _attach(TagConnection c) {
     c.addListener(notifyListeners);
-    _conns[c.tag.id] = c;
+    c.onPersist = _persist;
+    _conns[c.saved.id] = c;
     c.start();
+  }
+
+  void _persist(SavedDevice d) {
+    _devices = [for (final x in _devices) x.id == d.id ? d : x];
+    DeviceStore.save(_devices);
+    notifyListeners();
   }
 
   @override
@@ -437,7 +443,6 @@ class TagManager extends ChangeNotifier {
     super.dispose();
   }
 
-  /// Kullanıcı Bluetooth sekmesinde tarama yaparken otomatik aramayı durdur.
   Future<void> pauseSearch() async {
     _paused = true;
     if (FlutterBluePlus.isScanningNow) await FlutterBluePlus.stopScan();
@@ -469,35 +474,31 @@ class TagManager extends ChangeNotifier {
     for (final r in results) {
       final c = _conns[r.device.remoteId.str];
       if (c != null && c.needsAutoConnect) {
-        // Bağlanırken taramayı kapat: Android'de aynı anda tarama +
-        // bağlanma bağlantıyı yavaşlatıp bozabiliyor.
         await FlutterBluePlus.stopScan();
         await c.connectNow();
-        return; // diğerlerine bir sonraki tick'te bakılır
+        return;
       }
     }
   }
 
-  Future<void> add(SavedTag tag) async {
-    if (isSaved(tag.id)) return;
-    _tags = [..._tags, tag];
-    await TagStore.save(_tags);
-    _attach(TagConnection(tag));
+  Future<void> add(SavedDevice d) async {
+    if (isSaved(d.id)) return;
+    _devices = [..._devices, d];
+    await DeviceStore.save(_devices);
+    _attach(TagConnection(d));
     notifyListeners();
   }
 
-  Future<void> update(SavedTag tag) async {
-    _tags = [for (final t in _tags) t.id == tag.id ? tag : t];
-    await TagStore.save(_tags);
-    _conns[tag.id]?.tag = tag;
-    notifyListeners();
+  Future<void> update(SavedDevice d) async {
+    _conns[d.id]?.saved = d;
+    _persist(d);
     _tick();
   }
 
   Future<void> remove(String id) async {
     final c = _conns.remove(id);
-    _tags = _tags.where((t) => t.id != id).toList();
-    await TagStore.save(_tags);
+    _devices = _devices.where((d) => d.id != id).toList();
+    await DeviceStore.save(_devices);
     if (c != null) {
       c.removeListener(notifyListeners);
       await c.stop();
@@ -505,4 +506,12 @@ class TagManager extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  Future<void> clearAll() async {
+    for (final id in _conns.keys.toList()) {
+      await remove(id);
+    }
+  }
 }
+
+final tagManager = TagManager();

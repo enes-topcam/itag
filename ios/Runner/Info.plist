@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>iTag cihazinizi bulmak ve baglanmak icin Bluetooth gereklidir.</string>
+	<string>Takip cihazlarini bulmak ve baglanmak icin Bluetooth gereklidir.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>bluetooth-central</string>
@@ -13,7 +13,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>iTag Bulucu</string>
+	<string>TPCM Find</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
