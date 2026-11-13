@@ -260,9 +260,6 @@ class _SaveDeviceScreenState extends State<SaveDeviceScreen> {
       firstConnectedAt: now,
       lastConnectedAt: now,
       lastSeenAt: now,
-      // Otomatik bağlanma yok; kayıp modu (bağlıyken kopunca uyar) iTag'de açık.
-      alertOnDisconnect: widget.isItag,
-      autoConnect: false,
     );
     _saved = true;
     // Bağlantı açık; TagConnection mevcut bağlantıyı devralır.

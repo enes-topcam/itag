@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
-import '../models.dart';
 import '../permissions.dart';
 import '../tag_connection.dart';
 import '../theme.dart';
@@ -25,12 +24,6 @@ class SettingsTab extends StatelessWidget {
       body: ListView(
         padding: pagePadding(context),
         children: [
-          NavRow(
-            icon: Icons.notifications_none,
-            title: 'Bildirimler ve Uyarılar',
-            onTap: () => _push(context, const AlertSettingsPage()),
-          ),
-          const SizedBox(height: 10),
           NavRow(
             icon: Icons.bluetooth,
             title: 'Bluetooth / İzinler',
@@ -68,91 +61,6 @@ class SettingsTab extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class AlertSettingsPage extends StatelessWidget {
-  const AlertSettingsPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: Listenable.merge([appSettings, tagManager]),
-      builder: (context, _) {
-        final conns = tagManager.connections;
-        return Scaffold(
-          appBar: AppBar(title: const Text('Bildirimler ve Uyarılar')),
-          body: ListView(
-            padding: pagePadding(context),
-            children: [
-              NavRow(
-                icon: Icons.notifications_active_outlined,
-                title: 'Kopma uyarıları',
-                subtitle: 'Tüm cihazlar için ana anahtar',
-                trailing: Switch(
-                  value: appSettings.alertsEnabled,
-                  onChanged: (v) => appSettings.set(alertsEnabled: v),
-                ),
-              ),
-              const SizedBox(height: 10),
-              NavRow(
-                icon: Icons.volume_up_outlined,
-                title: 'Ses',
-                trailing: Switch(
-                  value: appSettings.alertSound,
-                  onChanged: (v) => appSettings.set(alertSound: v),
-                ),
-              ),
-              const SizedBox(height: 10),
-              NavRow(
-                icon: Icons.vibration,
-                title: 'Titreşim',
-                trailing: Switch(
-                  value: appSettings.alertVibrate,
-                  onChanged: (v) => appSettings.set(alertVibrate: v),
-                ),
-              ),
-              const SizedBox(height: 10),
-              NavRow(
-                icon: Icons.notifications_outlined,
-                title: 'Bildirim',
-                subtitle: 'Bağlantı koptuğunda sistem bildirimi de gönder',
-                trailing: Switch(
-                  value: appSettings.alertNotify,
-                  onChanged: (v) => appSettings.set(alertNotify: v),
-                ),
-              ),
-              if (conns.isNotEmpty) ...[
-                const SizedBox(height: 24),
-                const Text('Cihaz bazında kayıp modu',
-                    style: TextStyle(color: AppColors.text2, fontSize: 13)),
-                const SizedBox(height: 10),
-                for (final c in conns) ...[
-                  NavRow(
-                    icon: iconFor(c.saved.iconKey),
-                    title: c.saved.displayName,
-                    trailing: Switch(
-                      value: c.saved.alertOnDisconnect,
-                      onChanged: (v) => tagManager
-                          .update(c.saved.copyWith(alertOnDisconnect: v)),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                ],
-              ],
-              const SizedBox(height: 12),
-              const Text(
-                'Uygulama cihaza yalnızca sen "Bağlan" dediğinde bağlanır. '
-                'Kopma uyarıları sadece cihaz bağlıyken çalışır. Bildirim için '
-                'Ayarlar > Bluetooth / İzinler bölümünden bildirim izni '
-                'verilmelidir.',
-                style: TextStyle(color: AppColors.text2, fontSize: 12),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 }
@@ -247,9 +155,6 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage>
               const SizedBox(height: 10),
               _permRow('bluetooth', Icons.bluetooth_searching,
                   'Yakındaki cihazlar', 'Tarama ve bağlantı için gerekli'),
-              const SizedBox(height: 10),
-              _permRow('notification', Icons.notifications_none,
-                  'Bildirimler', 'Kopma uyarısı için (isteğe bağlı)'),
               const SizedBox(height: 20),
               if (Perms.supported)
                 OutlinedButton.icon(

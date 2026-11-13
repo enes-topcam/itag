@@ -1,6 +1,7 @@
 package com.itagtracker.itag_app
 
 import android.Manifest
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.bluetooth.BluetoothManager
 import android.content.Intent
@@ -25,15 +26,18 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        cleanupRemovedMapFeature()
+        cleanupRemovedFeatures()
     }
 
     /**
-     * Harita / sessiz dinleme özelliği kaldırıldı (2026-11-13). Önceki sürümün
-     * sisteme bıraktığı PendingIntent'li BLE taramasını durdur ve kaydedilmiş
-     * konum verilerini sil. Zararsız; artık yapacak bir şey yoksa hiçbir şey yapmaz.
+     * Önceki sürümlerden kalanları temizler (2026-11-13):
+     *  - Harita / sessiz dinleme: sisteme bırakılan PendingIntent'li BLE
+     *    taramasını durdurur, kaydedilmiş konum verilerini siler.
+     *  - Kayıp modu / bildirimler: eski bildirim kanallarını ve bekleyen
+     *    bildirimleri kaldırır.
+     * Zararsız; yapacak bir şey yoksa hiçbir şey yapmaz.
      */
-    private fun cleanupRemovedMapFeature() {
+    private fun cleanupRemovedFeatures() {
         try {
             val i = Intent("com.itagtracker.itag_app.PASSIVE_SCAN")
                 .setClassName(packageName, "com.itagtracker.itag_app.PassiveScanReceiver")
@@ -55,37 +59,23 @@ class MainActivity : FlutterActivity() {
             .remove("flutter.sightings_v1")
             .remove("flutter.passiveTracking")
             .apply()
+        try {
+            val nm = getSystemService(NotificationManager::class.java)
+            nm.cancelAll()
+            if (Build.VERSION.SDK_INT >= 26) {
+                nm.deleteNotificationChannel("alerts")
+                nm.deleteNotificationChannel("keepalive")
+            }
+        } catch (_: Exception) {}
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        // Kopma bildirimi (Dart: lib/background.dart).
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "tpcm/background")
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "notifyLost" -> {
-                        Notifier.showLost(
-                            this,
-                            call.argument<String>("id") ?: "",
-                            call.argument<String>("name") ?: "Cihaz"
-                        )
-                        result.success(null)
-                    }
-                    "cancelLost" -> {
-                        Notifier.cancelLost(this, call.argument<String>("id") ?: "")
-                        result.success(null)
-                    }
-                    else -> result.notImplemented()
-                }
-            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "tpcm/permissions")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "status" -> result.success(
-                        mapOf(
-                            "bluetooth" to granted("bluetooth"),
-                            "notification" to granted("notification"),
-                        )
+                        mapOf("bluetooth" to granted("bluetooth"))
                     )
                     "request" -> {
                         val group = call.argument<String>("group") ?: ""
@@ -119,9 +109,6 @@ class MainActivity : FlutterActivity() {
                 arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
             else
                 arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
-        "notification" ->
-            if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.POST_NOTIFICATIONS)
-            else emptyArray()
         else -> emptyArray()
     }
 

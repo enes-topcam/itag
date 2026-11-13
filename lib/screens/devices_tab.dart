@@ -5,7 +5,6 @@ import '../tag_connection.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'home_shell.dart';
-import 'settings_tab.dart';
 
 /// Sayfa 03 — Cihazlarım (ana ekran)
 class DevicesTab extends StatelessWidget {
@@ -17,7 +16,6 @@ class DevicesTab extends StatelessWidget {
       listenable: tagManager,
       builder: (context, _) {
         final conns = tagManager.connections;
-        final lost = conns.where((c) => c.lostAlarm).toList();
         return Scaffold(
           body: SafeArea(
             child: !tagManager.loaded
@@ -37,10 +35,6 @@ class DevicesTab extends StatelessWidget {
                             await FlutterBluePlus.turnOn();
                           } catch (_) {}
                         }),
-                      ],
-                      for (final c in lost) ...[
-                        _LostBanner(conn: c),
-                        const SizedBox(height: AppDims.gap),
                       ],
                       if (conns.isEmpty)
                         const SizedBox(
@@ -93,12 +87,6 @@ class _Header extends StatelessWidget {
           icon: const Icon(Icons.add),
           onPressed: () => homeTab.value = 1,
         ),
-        IconButton(
-          tooltip: 'Bildirimler ve uyarılar',
-          icon: const Icon(Icons.notifications_none),
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => const AlertSettingsPage())),
-        ),
       ],
     );
   }
@@ -137,37 +125,6 @@ class _Segment extends StatelessWidget {
         seg('Cihazlarım ($count)', true, null),
         seg('Tüm Cihazlar', false, () => homeTab.value = 1),
       ]),
-    );
-  }
-}
-
-class _LostBanner extends StatelessWidget {
-  const _LostBanner({required this.conn});
-  final TagConnection conn;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.err.withValues(alpha: 0.14),
-        border: Border.all(color: AppColors.err.withValues(alpha: 0.5)),
-        borderRadius: BorderRadius.circular(AppDims.cardRadius),
-      ),
-      padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
-      child: Row(
-        children: [
-          const Icon(Icons.warning_amber_rounded, color: AppColors.err),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text('${conn.saved.displayName} ile bağlantı kesildi',
-                style: const TextStyle(fontWeight: FontWeight.w600)),
-          ),
-          TextButton(
-            onPressed: conn.dismissAlarm,
-            child: const Text('Sustur'),
-          ),
-        ],
-      ),
     );
   }
 }
