@@ -72,7 +72,12 @@ String formatDate(DateTime? t) {
     case LinkStatus.searching:
       return ('Aranıyor…', AppColors.warn);
     case LinkStatus.connecting:
-      return ('Bağlanıyor…', AppColors.warn);
+      return (
+        c.connectAttempt > 1
+            ? 'Bağlanıyor… (${c.connectAttempt}. deneme)'
+            : 'Bağlanıyor…',
+        AppColors.warn
+      );
     case LinkStatus.suspicious:
       return ('Şüpheli cihaz', AppColors.err);
     case LinkStatus.offline:

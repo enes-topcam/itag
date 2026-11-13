@@ -236,7 +236,10 @@ class DeviceDetailScreen extends StatelessWidget {
                         c.isSearching
                             ? '30 sn boyunca aranır. Bulamazsa biraz yürüyüp '
                                 'tekrar dene.'
-                            : 'Cihazla iletişim kuruluyor',
+                            : (c.connectAttempt > 1
+                                ? 'Cihaz geç yanıt veriyor, '
+                                    '${c.connectAttempt}. deneme…'
+                                : 'Cihazla iletişim kuruluyor'),
                         style: const TextStyle(
                             color: AppColors.text2, fontSize: 13),
                       ),
