@@ -4,10 +4,11 @@ import '../tag_connection.dart';
 import 'device_detail.dart';
 import 'devices_tab.dart';
 import 'discover_tab.dart';
-import 'map_tab.dart';
 import 'settings_tab.dart';
 
-/// Alt menü sekmeleri: 0 Cihazlarım · 1 Keşfet · 2 Harita · 3 Ayarlar
+/// Alt menü sekmeleri: 0 Cihazlarım · 1 Keşfet · 2 Ayarlar
+/// (Harita sekmesi kaldırıldı: Bluetooth sürekli açık tutulmayacağı için
+/// telefon etiketi duyamaz, son görülen konum anlamsız kalıyordu.)
 final homeTab = ValueNotifier<int>(0);
 
 void openDevice(BuildContext context, TagConnection c) {
@@ -29,7 +30,6 @@ class HomeShell extends StatelessWidget {
           children: [
             const DevicesTab(),
             DiscoverTab(active: index == 1),
-            const MapTab(),
             const SettingsTab(),
           ],
         ),
@@ -45,11 +45,6 @@ class HomeShell extends StatelessWidget {
             NavigationDestination(
               icon: Icon(Icons.bluetooth_searching),
               label: 'Keşfet',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.map_outlined),
-              selectedIcon: Icon(Icons.map),
-              label: 'Harita',
             ),
             NavigationDestination(
               icon: Icon(Icons.settings_outlined),

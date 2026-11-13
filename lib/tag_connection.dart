@@ -112,24 +112,8 @@ class TagConnection extends ChangeNotifier {
   /// Kayıtlı bilgiler (son görülme vb.) değişince çağrılır; TagManager kaydeder.
   void Function(SavedDevice)? onPersist;
 
-  /// Bağlanınca/kesilince konum kaydı yazıldı; TagManager kayıtları yeniler.
-  void Function()? onSightingRecorded;
-
-  /// Son görülme kaydı (sessiz dinleme veya bağlantı anı). TagManager doldurur.
-  Sighting? sighting;
-
-  /// En güncel "son görülme" zamanı (bağlantı veya sessiz dinleme).
-  DateTime? get lastSeen {
-    final a = saved.lastSeenAt;
-    final b = sighting?.seenAt;
-    if (a == null) return b;
-    if (b == null) return a;
-    return a.isAfter(b) ? a : b;
-  }
-
-  void _recordSighting() {
-    Background.recordSighting(saved.id).then((_) => onSightingRecorded?.call());
-  }
+  /// En son ne zaman bağlıydı (bağlanma ya da bağlantının kesilmesi anı).
+  DateTime? get lastSeen => saved.lastSeenAt;
 
   BluetoothConnectionState state = BluetoothConnectionState.disconnected;
   int? rssi;
@@ -361,7 +345,6 @@ class TagConnection extends ChangeNotifier {
       _log('Bağlandı');
       final now = DateTime.now();
       _persist(saved.copyWith(lastConnectedAt: now, lastSeenAt: now));
-      _recordSighting();
       if (lostAlarm) {
         lostAlarm = false;
         _stopAlarm();
@@ -379,7 +362,6 @@ class TagConnection extends ChangeNotifier {
       rssi = null;
       if (wasConnectedBefore) {
         _persist(saved.copyWith(lastSeenAt: DateTime.now()));
-        if (!_stopping) _recordSighting(); // nerede bırakıldı / bulundu
       }
       if (wasConnectedBefore && !_stopping && !_hold) {
         _log('Bağlantı kesildi');
@@ -528,10 +510,8 @@ class TagConnection extends ChangeNotifier {
 }
 
 /// Tüm kayıtlı cihazları ve bağlantı nesnelerini tutar. Otomatik bağlanma
-/// YOK: bağlantıyı yalnızca kullanıcı "Bağlan" ile başlatır. Sessiz dinleme
-/// (bağlanmadan yayını duyup son görülen konumu kaydetme) Android tarafında
-/// çalışır; burada yalnızca açılıp kapatılır ve kayıtları okunur.
-class TagManager extends ChangeNotifier with WidgetsBindingObserver {
+/// YOK: bağlantıyı yalnızca kullanıcı "Bağlan" ile başlatır.
+class TagManager extends ChangeNotifier {
   final Map<String, TagConnection> _conns = {};
   List<SavedDevice> _devices = [];
   bool loaded = false;
@@ -548,11 +528,8 @@ class TagManager extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> init() async {
     // adapterStateNow ancak biri adapterState'i dinlerken güncellenir.
     _adapterSub = FlutterBluePlus.adapterState.listen((s) {
-      final wasOff = adapterState != BluetoothAdapterState.on;
       adapterState = s;
       notifyListeners();
-      // Bluetooth kapanıp açılınca sistem taramayı unutur; yeniden kur.
-      if (wasOff && s == BluetoothAdapterState.on) syncPassive();
     });
 
     _devices = await DeviceStore.load();
@@ -561,44 +538,11 @@ class TagManager extends ChangeNotifier with WidgetsBindingObserver {
     }
     loaded = true;
     notifyListeners();
-
-    WidgetsBinding.instance.addObserver(this);
-    appSettings.addListener(syncPassive);
-    await reloadSightings();
-    syncPassive();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Uygulama kapalıyken yazılan son görülme kayıtlarını göster.
-    if (state == AppLifecycleState.resumed) reloadSightings();
-  }
-
-  Future<void> reloadSightings() async {
-    final all = await SightingStore.load();
-    for (final c in _conns.values) {
-      c.sighting = all[c.saved.id];
-    }
-    notifyListeners();
-  }
-
-  /// Sessiz dinlemeyi ayara ve kayıtlı cihazlara göre aç/kapat.
-  void syncPassive() {
-    Background.setPassiveScan(
-      appSettings.passiveTracking && _devices.isNotEmpty,
-      _devices.map((d) => d.id).toList(),
-    );
-  }
-
-  Future<void> clearSightings() async {
-    await SightingStore.clear();
-    await reloadSightings();
   }
 
   void _attach(TagConnection c) {
     c.addListener(notifyListeners);
     c.onPersist = _persist;
-    c.onSightingRecorded = reloadSightings;
     _conns[c.saved.id] = c;
     c.start();
   }
@@ -612,8 +556,6 @@ class TagManager extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void dispose() {
     _adapterSub?.cancel();
-    WidgetsBinding.instance.removeObserver(this);
-    appSettings.removeListener(syncPassive);
     super.dispose();
   }
 
@@ -623,7 +565,6 @@ class TagManager extends ChangeNotifier with WidgetsBindingObserver {
     await DeviceStore.save(_devices);
     _attach(TagConnection(d));
     notifyListeners();
-    syncPassive();
   }
 
   Future<void> update(SavedDevice d) async {
@@ -641,7 +582,6 @@ class TagManager extends ChangeNotifier with WidgetsBindingObserver {
       c.dispose();
     }
     notifyListeners();
-    syncPassive();
   }
 
   Future<void> clearAll() async {

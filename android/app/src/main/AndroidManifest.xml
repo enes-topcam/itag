@@ -5,34 +5,16 @@
     <!-- Android 11 ve altı -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
-    <!-- Konum: Android 11 ve altında tarama için; tüm sürümlerde "son görülen konum" için (isteğe bağlı) -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Konum: yalnızca Android 11 ve altında BLE taraması için gerekli -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
     <!-- Bildirim: kopma uyarısı (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Harita karoları (OpenStreetMap/CARTO) için -->
-    <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Son görülen konum: uygulama kapalıyken (sessiz dinleme) konum kaydı -->
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-    <!-- Telefon açılınca sessiz dinlemeyi yeniden kurmak için (bağlanmaz) -->
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
     <application
         android:label="TPCM Find"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
-        <receiver
-            android:name=".PassiveScanReceiver"
-            android:exported="false" />
-        <receiver
-            android:name=".BootReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-            </intent-filter>
-        </receiver>
         <activity
             android:name=".MainActivity"
             android:exported="true"

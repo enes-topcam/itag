@@ -144,17 +144,6 @@ class _PermissionsScreenState extends State<PermissionsScreen>
             ),
             const SizedBox(height: AppDims.gap),
             _PermCard(
-              icon: Icons.location_on_outlined,
-              title: 'Konum',
-              desc: 'Cihazı en son gördüğün yeri kaydetmek için. '
-                  'Cihazın kendisinde GPS yoktur.',
-              granted: _status['location'] == true,
-              denied: _denied.contains('location'),
-              unsupported: !Perms.supported,
-              onRequest: () => _request('location'),
-            ),
-            const SizedBox(height: AppDims.gap),
-            _PermCard(
               icon: Icons.notifications_none,
               title: 'Bildirimler',
               desc: 'Bağlantı koptuğunda seni uyarabilmek için.',
