@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
-import 'background.dart';
 import 'models.dart';
 
 /// iTag tipi ucuz BLE etiketlerin GATT UUID'leri (gerçek cihazda doğrulandı:
@@ -101,7 +100,7 @@ class ItagFingerprint {
 }
 
 /// Arayüzde gösterilen bağlantı durumu (doküman §3 "Ortak durum bileşenleri").
-enum LinkStatus { connected, searching, connecting, lost, offline, suspicious }
+enum LinkStatus { connected, searching, connecting, offline, suspicious }
 
 /// Kayıtlı tek bir cihazla olan bağlantıyı yönetir.
 class TagConnection extends ChangeNotifier {
@@ -178,7 +177,6 @@ class TagConnection extends ChangeNotifier {
   bool ringing = false;
   bool trusted = false;
   bool suspicious = false;
-  bool lostAlarm = false;
   List<String> gattLines = const [];
   final List<String> log = [];
 
@@ -186,7 +184,6 @@ class TagConnection extends ChangeNotifier {
   StreamSubscription? _connSub;
   StreamSubscription? _buttonSub;
   Timer? _rssiTimer;
-  Timer? _alarmTimer;
   Timer? _ringTimer;
   bool _stopping = false;
   bool _hold = false;
@@ -205,7 +202,6 @@ class TagConnection extends ChangeNotifier {
   bool get canRing => isConnected && trusted && _alertChar != null;
 
   LinkStatus get status {
-    if (lostAlarm) return LinkStatus.lost;
     if (isConnected) return LinkStatus.connected;
     if (_searching) return LinkStatus.searching;
     if (_connecting) return LinkStatus.connecting;
@@ -357,11 +353,9 @@ class TagConnection extends ChangeNotifier {
     }
   }
 
-  /// Kullanıcı bağlantıyı bilerek kesti: yanlış alarm verilmez (doküman §12).
+  /// Kullanıcı "Bağlantıyı Kes"e bastı.
   Future<void> disconnectManually() async {
     _hold = true;
-    lostAlarm = false;
-    _stopAlarm();
     _ringTimer?.cancel();
     // Kesmeden önce çalan sesi durdur. (Not: Bu, bizim iTag'in kopma bip'ini
     // ENGELLEMİYOR — 2026-11-13'te test edildi; etiket her kopuşta öter.)
@@ -382,7 +376,6 @@ class TagConnection extends ChangeNotifier {
 
   Future<void> stop() async {
     _stopping = true;
-    _stopAlarm();
     _ringTimer?.cancel();
     _rssiTimer?.cancel();
     _buttonSub?.cancel();
@@ -400,12 +393,6 @@ class TagConnection extends ChangeNotifier {
       _log('Bağlandı');
       final now = DateTime.now();
       _persist(saved.copyWith(lastConnectedAt: now, lastSeenAt: now));
-      if (lostAlarm) {
-        lostAlarm = false;
-        _stopAlarm();
-        Background.cancelLost(saved.id);
-        _log('Cihaz geri geldi, uyarı durdu');
-      }
       await _setup();
     } else if (s == BluetoothConnectionState.disconnected) {
       _rssiTimer?.cancel();
@@ -421,15 +408,6 @@ class TagConnection extends ChangeNotifier {
       }
       if (wasConnectedBefore && !_stopping && !_hold) {
         _log('Bağlantı kesildi');
-        if (saved.alertOnDisconnect && appSettings.alertsEnabled) {
-          lostAlarm = true;
-          _persist(saved.copyWith(lastAlertAt: DateTime.now()));
-          _startAlarm();
-          // Uygulama kapalıyken de görünsün diye sistem bildirimi.
-          if (appSettings.alertNotify) {
-            Background.notifyLost(saved.id, saved.displayName);
-          }
-        }
       }
       notifyListeners();
     }
@@ -527,33 +505,6 @@ class TagConnection extends ChangeNotifier {
     } catch (e) {
       _log('Komut gönderilemedi: $e');
     }
-  }
-
-  void _startAlarm() {
-    _alarmTimer?.cancel();
-    var count = 0;
-    void beep() {
-      if (appSettings.alertVibrate) HapticFeedback.heavyImpact();
-      if (appSettings.alertSound) SystemSound.play(SystemSoundType.alert);
-    }
-
-    beep();
-    _alarmTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-      beep();
-      if (++count >= 30) t.cancel();
-    });
-  }
-
-  void _stopAlarm() {
-    _alarmTimer?.cancel();
-    _alarmTimer = null;
-  }
-
-  void dismissAlarm() {
-    _stopAlarm();
-    lostAlarm = false;
-    Background.cancelLost(saved.id);
-    notifyListeners();
   }
 
   bool _disposed = false;

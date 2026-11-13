@@ -73,8 +73,6 @@ String formatDate(DateTime? t) {
       return ('Aranıyor…', AppColors.warn);
     case LinkStatus.connecting:
       return ('Bağlanıyor…', AppColors.warn);
-    case LinkStatus.lost:
-      return ('Bağlantı kesildi', AppColors.err);
     case LinkStatus.suspicious:
       return ('Şüpheli cihaz', AppColors.err);
     case LinkStatus.offline:

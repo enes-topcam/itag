@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../models.dart';
 import '../tag_connection.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'connect_flow.dart';
-import 'settings_tab.dart';
 
 /// Sayfa 07 — Cihaz Detayı
 class DeviceDetailScreen extends StatelessWidget {
@@ -108,18 +106,6 @@ class DeviceDetailScreen extends StatelessWidget {
                           color: AppColors.text2, fontSize: 13)),
                 ),
               const SizedBox(height: 20),
-              if (c.lostAlarm) ...[
-                _Notice(
-                  color: AppColors.err,
-                  icon: Icons.warning_amber_rounded,
-                  title: 'Bağlantı kesildi',
-                  text: 'Cihaz uzakta olabilir. Yaklaşıp tekrar "Bağlan"a bas.',
-                  action: TextButton(
-                      onPressed: c.dismissAlarm,
-                      child: const Text('Uyarıyı sustur')),
-                ),
-                const SizedBox(height: AppDims.gap),
-              ],
               if (c.suspicious) ...[
                 const _Notice(
                   color: AppColors.warn,
@@ -186,18 +172,6 @@ class DeviceDetailScreen extends StatelessWidget {
               const SizedBox(height: 16),
               ..._mainAction(context, c),
               const SizedBox(height: 16),
-              NavRow(
-                icon: Icons.notifications_none,
-                title: 'Kayıp Modu',
-                subtitle: 'Bağlantı kesilince uyar',
-                onTap: () => _push(context, LostModeScreen(conn: c)),
-                trailing: Switch(
-                  value: s.alertOnDisconnect,
-                  onChanged: (v) => tagManager
-                      .update(s.copyWith(alertOnDisconnect: v)),
-                ),
-              ),
-              const SizedBox(height: 10),
               NavRow(
                 icon: Icons.info_outline,
                 title: 'Cihaz Bilgileri',
@@ -366,13 +340,11 @@ class _Notice extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.text,
-    this.action,
   });
   final Color color;
   final IconData icon;
   final String title;
   final String text;
-  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -398,147 +370,11 @@ class _Notice extends StatelessWidget {
                 Text(text,
                     style:
                         const TextStyle(color: AppColors.text2, fontSize: 13)),
-                ?action,
               ],
             ),
           ),
         ],
       ),
-    );
-  }
-}
-
-/// Sayfa 09 — Kayıp Modu / Kopma Uyarıları
-class LostModeScreen extends StatelessWidget {
-  const LostModeScreen({super.key, required this.conn});
-  final TagConnection conn;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: Listenable.merge([conn, appSettings]),
-      builder: (context, _) {
-        final s = conn.saved;
-        return Scaffold(
-          appBar: AppBar(title: const Text('Kayıp Modu')),
-          body: ListView(
-            padding: pagePadding(context),
-            children: [
-              const SizedBox(height: 8),
-              Center(
-                child: Container(
-                  width: 88,
-                  height: 88,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.accent.withValues(alpha: 0.16),
-                    boxShadow: [
-                      BoxShadow(
-                          color: AppColors.accent.withValues(alpha: 0.3),
-                          blurRadius: 30),
-                    ],
-                  ),
-                  child: const Icon(Icons.notifications_active_outlined,
-                      size: 40, color: AppColors.accentLight),
-                ),
-              ),
-              const SizedBox(height: 18),
-              Text('Bağlantı Uyarıları',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 6),
-              Text('${s.displayName} ile bağlantı kesildiğinde seni uyarır.',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppColors.text2)),
-              const SizedBox(height: 24),
-              NavRow(
-                icon: Icons.notifications_none,
-                title: 'Bağlantı kesilince uyar',
-                trailing: Switch(
-                  value: s.alertOnDisconnect,
-                  onChanged: (v) =>
-                      tagManager.update(s.copyWith(alertOnDisconnect: v)),
-                ),
-              ),
-              if (!appSettings.alertsEnabled) ...[
-                const SizedBox(height: 10),
-                NavRow(
-                  icon: Icons.warning_amber_rounded,
-                  color: AppColors.warn,
-                  title: 'Uyarılar genel olarak kapalı',
-                  subtitle: 'Ayarlar > Bildirimler ve Uyarılar',
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const AlertSettingsPage())),
-                ),
-              ],
-              const SizedBox(height: 20),
-              const Text('Uyarı yöntemi',
-                  style: TextStyle(color: AppColors.text2, fontSize: 13)),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  FilterChip(
-                    label: const Text('Ses'),
-                    selected: appSettings.alertSound,
-                    onSelected: (v) => appSettings.set(alertSound: v),
-                  ),
-                  FilterChip(
-                    label: const Text('Titreşim'),
-                    selected: appSettings.alertVibrate,
-                    onSelected: (v) => appSettings.set(alertVibrate: v),
-                  ),
-                  FilterChip(
-                    label: const Text('Bildirim'),
-                    selected: appSettings.alertNotify,
-                    onSelected: (v) => appSettings.set(alertNotify: v),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              const Text('Uyarı yöntemi tüm cihazlar için geçerlidir.',
-                  style: TextStyle(color: AppColors.text2, fontSize: 12)),
-              const SizedBox(height: 20),
-              AppCard(
-                child: Row(children: [
-                  const Text('Son uyarı',
-                      style: TextStyle(color: AppColors.text2)),
-                  const Spacer(),
-                  Text(s.lastAlertAt == null
-                      ? 'Henüz yok'
-                      : formatDate(s.lastAlertAt)),
-                ]),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppColors.raised,
-                  borderRadius: BorderRadius.circular(AppDims.cardRadius),
-                ),
-                child: const Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.info_outline,
-                        color: AppColors.accentLight, size: 20),
-                    SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Kayıp modu yalnızca cihaz bağlıyken çalışır: bağlıyken '
-                        'cihaz menzilden çıkarsa telefon uyarır. Bağlantıyı '
-                        'kendin keserken veya uygulamayı kapatırken uyarı '
-                        'verilmez.',
-                        style: TextStyle(color: AppColors.text2, fontSize: 13),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 }

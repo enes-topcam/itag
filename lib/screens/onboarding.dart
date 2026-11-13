@@ -126,8 +126,9 @@ class _PermissionsScreenState extends State<PermissionsScreen>
                 style: Theme.of(context).textTheme.headlineMedium),
             const SizedBox(height: 10),
             const Text(
-              'TPCM Find aşağıdaki izinleri yalnızca belirtilen özellikler için '
-              'kullanır. İstediğin zaman Ayarlar\'dan değiştirebilirsin.',
+              'TPCM Find yalnızca yakındaki takip cihazını bulup bağlanmak '
+              'için Bluetooth izni ister. İstediğin zaman Ayarlar\'dan '
+              'değiştirebilirsin.',
               style: TextStyle(color: AppColors.text2, fontSize: 14),
             ),
             const SizedBox(height: 24),
@@ -139,16 +140,6 @@ class _PermissionsScreenState extends State<PermissionsScreen>
               granted: btOk,
               denied: _denied.contains('bluetooth'),
               onRequest: () => _request('bluetooth'),
-            ),
-            const SizedBox(height: AppDims.gap),
-            _PermCard(
-              icon: Icons.notifications_none,
-              title: 'Bildirimler',
-              desc: 'Bağlantı koptuğunda seni uyarabilmek için.',
-              granted: _status['notification'] == true,
-              denied: _denied.contains('notification'),
-              unsupported: !Perms.supported,
-              onRequest: () => _request('notification'),
             ),
             const SizedBox(height: 28),
             FilledButton(
@@ -180,7 +171,6 @@ class _PermCard extends StatelessWidget {
     required this.denied,
     required this.onRequest,
     this.required = false,
-    this.unsupported = false,
   });
   final IconData icon;
   final String title;
@@ -188,7 +178,6 @@ class _PermCard extends StatelessWidget {
   final bool granted;
   final bool denied;
   final bool required;
-  final bool unsupported;
   final VoidCallback onRequest;
 
   @override
@@ -200,9 +189,6 @@ class _PermCard extends StatelessWidget {
         SizedBox(width: 4),
         Text('Verildi', style: TextStyle(color: AppColors.ok)),
       ]);
-    } else if (unsupported) {
-      action = const Text('Yakında',
-          style: TextStyle(color: AppColors.text2, fontSize: 13));
     } else if (denied) {
       action = TextButton(
           onPressed: Perms.openSettings, child: const Text('Ayarlar'));

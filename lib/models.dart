@@ -5,9 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Kayıtlı cihaz (tasarım dokümanı §18'deki SavedDevice'ın Flutter karşılığı).
 ///
-/// Doküman Room önerir; birkaç cihazlık küçük veri için SharedPreferences
-/// içinde JSON saklıyoruz. Veri büyürse (ör. konum geçmişi) sqflite/drift'e
-/// geçilebilir.
+/// Birkaç cihazlık küçük veri olduğu için SharedPreferences içinde JSON
+/// olarak saklanır.
 class SavedDevice {
   SavedDevice({
     required this.id,
@@ -18,17 +17,8 @@ class SavedDevice {
     required this.firstConnectedAt,
     this.lastConnectedAt,
     this.lastSeenAt,
-    this.lastLatitude,
-    this.lastLongitude,
-    this.alertOnDisconnect = true,
-    this.autoConnect = true,
-    this.lastAlertAt,
     this.rssiAt1m,
   });
-
-  /// Kalibrasyon: etiketin 1 metredeki ölçülen sinyal gücü (dBm). Yoksa
-  /// varsayılan kullanılır. Mesafe tahmini bu değere çok duyarlıdır.
-  final int? rssiAt1m;
 
   /// Platform tanımlayıcısı: Android'de MAC adresi, iOS'ta iPhone'un bu
   /// cihaza verdiği UUID (iOS MAC göstermez; her telefon kendisi kaydeder).
@@ -44,29 +34,19 @@ class SavedDevice {
   final DateTime firstConnectedAt;
   final DateTime? lastConnectedAt;
   final DateTime? lastSeenAt;
-  final double? lastLatitude;
-  final double? lastLongitude;
 
-  /// Kayıp modu: bağlantı beklenmedik şekilde koparsa uyar.
-  final bool alertOnDisconnect;
-
-  /// Eski sürümden kalan alan; artık kullanılmıyor (otomatik bağlanma
-  /// kaldırıldı — bu iTag her kopuşta öttüğü için yalnızca istenince bağlanılır).
-  final bool autoConnect;
-  final DateTime? lastAlertAt;
+  /// Kalibrasyon: etiketin 1 metredeki ölçülen sinyal gücü (dBm). Yoksa
+  /// varsayılan kullanılır. Mesafe tahmini bu değere çok duyarlıdır.
+  final int? rssiAt1m;
 
   SavedDevice copyWith({
     String? displayName,
     String? iconKey,
     DateTime? lastConnectedAt,
     DateTime? lastSeenAt,
-    bool? alertOnDisconnect,
-    bool? autoConnect,
-    DateTime? lastAlertAt,
     int? rssiAt1m,
   }) =>
       SavedDevice(
-        rssiAt1m: rssiAt1m ?? this.rssiAt1m,
         id: id,
         displayName: displayName ?? this.displayName,
         advertisedName: advertisedName,
@@ -75,11 +55,7 @@ class SavedDevice {
         firstConnectedAt: firstConnectedAt,
         lastConnectedAt: lastConnectedAt ?? this.lastConnectedAt,
         lastSeenAt: lastSeenAt ?? this.lastSeenAt,
-        lastLatitude: lastLatitude,
-        lastLongitude: lastLongitude,
-        alertOnDisconnect: alertOnDisconnect ?? this.alertOnDisconnect,
-        autoConnect: autoConnect ?? this.autoConnect,
-        lastAlertAt: lastAlertAt ?? this.lastAlertAt,
+        rssiAt1m: rssiAt1m ?? this.rssiAt1m,
       );
 
   static DateTime? _date(dynamic v) =>
@@ -94,15 +70,12 @@ class SavedDevice {
         'firstConnectedAt': firstConnectedAt.millisecondsSinceEpoch,
         'lastConnectedAt': lastConnectedAt?.millisecondsSinceEpoch,
         'lastSeenAt': lastSeenAt?.millisecondsSinceEpoch,
-        'lastLatitude': lastLatitude,
-        'lastLongitude': lastLongitude,
-        'alertOnDisconnect': alertOnDisconnect,
-        'autoConnect': autoConnect,
-        'lastAlertAt': lastAlertAt?.millisecondsSinceEpoch,
         'rssiAt1m': rssiAt1m,
       };
 
-  /// Eski sürümün kaydı ({id, name, isItag, autoConnect}) da okunur.
+  /// Eski sürümlerin kayıtları da okunur; artık kullanılmayan alanlar
+  /// (konum, otomatik bağlanma, kayıp modu) yok sayılır ve bir sonraki
+  /// kayıtta düşer.
   factory SavedDevice.fromJson(Map<String, dynamic> j) => SavedDevice(
         id: j['id'] as String,
         displayName: (j['displayName'] ?? j['name'] ?? 'Cihaz') as String,
@@ -112,11 +85,6 @@ class SavedDevice {
         firstConnectedAt: _date(j['firstConnectedAt']) ?? DateTime.now(),
         lastConnectedAt: _date(j['lastConnectedAt']),
         lastSeenAt: _date(j['lastSeenAt']),
-        lastLatitude: (j['lastLatitude'] as num?)?.toDouble(),
-        lastLongitude: (j['lastLongitude'] as num?)?.toDouble(),
-        alertOnDisconnect: j['alertOnDisconnect'] as bool? ?? true,
-        autoConnect: j['autoConnect'] as bool? ?? true,
-        lastAlertAt: _date(j['lastAlertAt']),
         rssiAt1m: j['rssiAt1m'] as int?,
       );
 }
@@ -144,51 +112,32 @@ class DeviceStore {
   }
 }
 
-/// Uygulama geneli tercihler (doküman DataStore önerir; SharedPreferences).
+/// Uygulama geneli tercihler (SharedPreferences).
 class AppSettings extends ChangeNotifier {
   bool onboarded = false;
-  bool alertsEnabled = true; // global kopma uyarısı
-  bool alertSound = true;
-  bool alertVibrate = true;
-  bool alertNotify = true; // sistem bildirimi
 
   late SharedPreferences _p;
+
+  /// Kaldırılan özelliklerin (kayıp modu uyarıları) eski ayar anahtarları.
+  static const _legacyKeys = [
+    'alertsEnabled',
+    'alertSound',
+    'alertVibrate',
+    'alertNotify',
+  ];
 
   Future<void> load() async {
     _p = await SharedPreferences.getInstance();
     onboarded = _p.getBool('onboarded') ?? false;
-    alertsEnabled = _p.getBool('alertsEnabled') ?? true;
-    alertSound = _p.getBool('alertSound') ?? true;
-    alertVibrate = _p.getBool('alertVibrate') ?? true;
-    alertNotify = _p.getBool('alertNotify') ?? true;
+    for (final k in _legacyKeys) {
+      if (_p.containsKey(k)) await _p.remove(k);
+    }
   }
 
-  Future<void> set({
-    bool? onboarded,
-    bool? alertsEnabled,
-    bool? alertSound,
-    bool? alertVibrate,
-    bool? alertNotify,
-  }) async {
-    if (alertNotify != null) {
-      this.alertNotify = alertNotify;
-      await _p.setBool('alertNotify', alertNotify);
-    }
+  Future<void> set({bool? onboarded}) async {
     if (onboarded != null) {
       this.onboarded = onboarded;
       await _p.setBool('onboarded', onboarded);
-    }
-    if (alertsEnabled != null) {
-      this.alertsEnabled = alertsEnabled;
-      await _p.setBool('alertsEnabled', alertsEnabled);
-    }
-    if (alertSound != null) {
-      this.alertSound = alertSound;
-      await _p.setBool('alertSound', alertSound);
-    }
-    if (alertVibrate != null) {
-      this.alertVibrate = alertVibrate;
-      await _p.setBool('alertVibrate', alertVibrate);
     }
     notifyListeners();
   }
