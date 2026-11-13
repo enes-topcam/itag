@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 /// iTag tipi ucuz BLE etiketlerin standart UUID'leri.
 class ItagUuids {
@@ -99,17 +98,9 @@ class _ScanScreenState extends State<ScanScreen> {
         r.advertisementData.serviceUuids.contains(ItagUuids.buttonService);
   }
 
-  Future<void> _ensurePermissions() async {
-    if (!Platform.isAndroid) return; // iOS izni sistem kendisi sorar
-    await [
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-      Permission.locationWhenInUse, // Android 11 ve altı için
-    ].request();
-  }
-
+  // Not: Bluetooth izinlerini flutter_blue_plus tarama/bağlanma sırasında
+  // kendisi ister (Android), iOS'ta da sistem kendisi sorar.
   Future<void> _startScan() async {
-    await _ensurePermissions();
     if (Platform.isAndroid &&
         FlutterBluePlus.adapterStateNow != BluetoothAdapterState.on) {
       try {
