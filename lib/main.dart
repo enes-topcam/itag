@@ -23,131 +23,135 @@ class ItagApp extends StatelessWidget {
     return MaterialApp(
       title: 'iTag Bulucu',
       theme: ThemeData(colorSchemeSeed: Colors.indigo, useMaterial3: true),
-      home: const HomeScreen(),
+      home: const HomeShell(),
     );
   }
 }
 
+void openDevice(BuildContext context, TagConnection c) {
+  Navigator.of(context).push(MaterialPageRoute(
+    builder: (_) => DeviceDetailScreen(conn: c),
+  ));
+}
+
 // ---------------------------------------------------------------------------
-// Ana ekran: kayıtlı etiketler
+// Alt sekmeler
 // ---------------------------------------------------------------------------
 
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+class HomeShell extends StatefulWidget {
+  const HomeShell({super.key});
+
+  @override
+  State<HomeShell> createState() => _HomeShellState();
+}
+
+class _HomeShellState extends State<HomeShell> {
+  int _index = 1; // açılışta Kayıtlı Cihazlar
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: IndexedStack(
+        index: _index,
+        children: [
+          BluetoothTab(active: _index == 0),
+          SavedTab(onGoScan: () => setState(() => _index = 0)),
+        ],
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _index,
+        onDestinationSelected: (i) => setState(() => _index = i),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.bluetooth_searching),
+            label: 'Bluetooth',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.bookmarks_outlined),
+            selectedIcon: Icon(Icons.bookmarks),
+            label: 'Kayıtlı Cihazlar',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BluetoothOffBanner extends StatelessWidget {
+  const _BluetoothOffBanner();
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: tagManager,
       builder: (context, _) {
-        final conns = tagManager.connections;
-        return Scaffold(
-          appBar: AppBar(title: const Text('Etiketlerim')),
-          body: !tagManager.loaded
-              ? const Center(child: CircularProgressIndicator())
-              : conns.isEmpty
-                  ? const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Text(
-                          'Henüz kayıtlı etiket yok.\n'
-                          'Aşağıdan "Etiket Ekle"ye basın.',
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    )
-                  : ListView(
-                      children: [
-                        for (final c in conns) _TagTile(conn: c),
-                      ],
-                    ),
-          floatingActionButton: FloatingActionButton.extended(
-            icon: const Icon(Icons.add),
-            label: const Text('Etiket Ekle'),
-            onPressed: () async {
-              final tag = await Navigator.of(context).push<SavedTag>(
-                MaterialPageRoute(builder: (_) => const AddTagScreen()),
-              );
-              if (tag != null) await tagManager.add(tag);
-            },
-          ),
+        if (tagManager.adapterState != BluetoothAdapterState.off) {
+          return const SizedBox.shrink();
+        }
+        return Container(
+          width: double.infinity,
+          color: Colors.red.shade100,
+          padding: const EdgeInsets.all(12),
+          child: const Text('Bluetooth kapalı. Lütfen açın.'),
         );
       },
     );
   }
 }
 
-class _TagTile extends StatelessWidget {
-  const _TagTile({required this.conn});
-  final TagConnection conn;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = conn;
-    final Color color;
-    final String status;
-    if (c.lostAlarm) {
-      color = Colors.red;
-      status = 'BAĞLANTI KOPTU';
-    } else if (c.isConnected) {
-      color = Colors.green;
-      status = 'Bağlı · ${c.rssi ?? '-'} dBm';
-    } else {
-      color = Colors.grey;
-      status = 'Aranıyor...';
-    }
-    return ListTile(
-      leading: Icon(Icons.key, color: color),
-      title: Text(c.tag.name),
-      subtitle: Text(status, style: TextStyle(color: color)),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => TagDetailScreen(conn: c),
-      )),
-    );
-  }
-}
-
 // ---------------------------------------------------------------------------
-// Etiket ekleme: tara -> doğrula -> isim ver -> kaydet
+// Sekme 1: Bluetooth (çevredeki tüm cihazlar)
 // ---------------------------------------------------------------------------
 
-class AddTagScreen extends StatefulWidget {
-  const AddTagScreen({super.key});
+class BluetoothTab extends StatefulWidget {
+  const BluetoothTab({super.key, required this.active});
+  final bool active;
 
   @override
-  State<AddTagScreen> createState() => _AddTagScreenState();
+  State<BluetoothTab> createState() => _BluetoothTabState();
 }
 
-class _AddTagScreenState extends State<AddTagScreen> {
-  List<ScanResult> _results = [];
-  bool _scanning = false;
-  bool _verifying = false;
+class _BluetoothTabState extends State<BluetoothTab> {
+  final Map<String, ScanResult> _seen = {};
+  bool _userScan = false;
+  String? _connectingId;
   late final StreamSubscription _scanSub;
   late final StreamSubscription _scanningSub;
 
   @override
   void initState() {
     super.initState();
-    _scanSub = FlutterBluePlus.scanResults.listen((r) {
-      final list = r
-          .where((x) => _looksLikeItag(x) && !tagManager.isSaved(x.device.remoteId.str))
-          .toList()
-        ..sort((a, b) => b.rssi - a.rssi);
-      setState(() => _results = list);
+    // Sadece kullanıcının başlattığı taramanın sonuçlarını topla
+    // (otomatik bağlanma taramaları listeyi bozmasın).
+    _scanSub = FlutterBluePlus.onScanResults.listen((results) {
+      if (!_userScan) return;
+      for (final r in results) {
+        _seen[r.device.remoteId.str] = r;
+      }
+      if (mounted) setState(() {});
     });
     _scanningSub = FlutterBluePlus.isScanning.listen((s) {
-      if (mounted) setState(() => _scanning = s);
+      if (!s && _userScan) {
+        _userScan = false;
+        tagManager.resumeSearch();
+        if (mounted) setState(() {});
+      }
     });
-    tagManager.pauseSearch().then((_) => _startScan());
+  }
+
+  @override
+  void didUpdateWidget(BluetoothTab old) {
+    super.didUpdateWidget(old);
+    // Sekmeye ilk geçişte otomatik tara.
+    if (widget.active && !old.active && _seen.isEmpty && !_userScan) {
+      _startScan();
+    }
   }
 
   @override
   void dispose() {
-    FlutterBluePlus.stopScan();
     _scanSub.cancel();
     _scanningSub.cancel();
-    tagManager.resumeSearch();
     super.dispose();
   }
 
@@ -163,142 +167,286 @@ class _AddTagScreenState extends State<AddTagScreen> {
 
   Future<void> _startScan() async {
     if (Platform.isAndroid &&
-        FlutterBluePlus.adapterStateNow != BluetoothAdapterState.on) {
+        tagManager.adapterState != BluetoothAdapterState.on) {
       try {
         await FlutterBluePlus.turnOn();
       } catch (_) {}
     }
+    await tagManager.pauseSearch();
+    setState(() {
+      _seen.clear();
+      _userScan = true;
+    });
     try {
       await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
     } catch (e) {
+      _userScan = false;
+      tagManager.resumeSearch();
       _snack('Tarama başlatılamadı: $e');
     }
   }
+
+  Future<void> _stopScan() => FlutterBluePlus.stopScan();
 
   void _snack(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  /// Cihaza kısa süreli bağlanıp gerçekten iTag olduğunu doğrular.
-  Future<bool> _verify(BluetoothDevice d) async {
+  /// Cihaza bağlan; başarılıysa kayıtlı cihazlara ekle ve detayını aç.
+  Future<void> _connect(ScanResult r) async {
+    final id = r.device.remoteId.str;
+    final existing = tagManager.get(id);
+    if (existing != null) {
+      openDevice(context, existing);
+      return;
+    }
+    if (_connectingId != null) return;
+
+    await _stopScan();
+    setState(() => _connectingId = id);
+    final d = r.device;
     try {
       await d.connect(
-          license: License.nonprofit, timeout: const Duration(seconds: 15));
+        license: License.nonprofit,
+        timeout: const Duration(seconds: 10),
+        mtu: null,
+      );
       final fp = ItagFingerprint(await d.discoverServices());
-      // Birazdan bağlantıyı keseceğiz; etiket bu kopmada ötmesin.
-      try {
-        await fp.disableLinkLossBeep();
-      } catch (_) {}
-      // Bip yok: kalıcı bağlantı kurulunca bip-bip-bip zaten gelecek.
-      return fp.looksLikeItag;
+      final isItag = fp.looksLikeItag;
+      final name = _nameOf(r);
+      final tag = SavedTag(
+        id: id,
+        name: name.isNotEmpty ? name : (isItag ? 'iTag' : 'Bluetooth cihazı'),
+        isItag: isItag,
+        // iTag'ler varsayılan olarak otomatik bağlansın; diğerleri hayır.
+        autoConnect: isItag,
+      );
+      // Bağlantı açık kalıyor; TagConnection mevcut bağlantıyı devralır.
+      await tagManager.add(tag);
+      if (!mounted) return;
+      _snack('"${tag.name}" kayıtlı cihazlara eklendi');
+      openDevice(context, tagManager.get(id)!);
     } catch (e) {
-      _snack('Bağlanılamadı: $e');
-      return false;
-    } finally {
       try {
         await d.disconnect();
       } catch (_) {}
+      _snack('Bağlanılamadı');
+    } finally {
+      if (mounted) setState(() => _connectingId = null);
     }
-  }
-
-  Future<void> _onPick(ScanResult r) async {
-    await FlutterBluePlus.stopScan();
-    setState(() => _verifying = true);
-    final ok = await _verify(r.device);
-    if (!mounted) return;
-    setState(() => _verifying = false);
-    if (!ok) {
-      _snack('Bu cihaz iTag olarak doğrulanamadı.');
-      return;
-    }
-    final name = await _askName(_nameOf(r).isEmpty ? 'iTag' : _nameOf(r));
-    if (name == null || !mounted) return;
-    Navigator.of(context)
-        .pop(SavedTag(id: r.device.remoteId.str, name: name));
-  }
-
-  Future<String?> _askName(String initial) {
-    final ctrl = TextEditingController(text: initial);
-    return showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Etiket doğrulandı'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(
-              labelText: 'Bu etikete bir isim ver', hintText: 'Örn. Anahtarlık'),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
-          FilledButton(
-            onPressed: () {
-              final t = ctrl.text.trim();
-              Navigator.pop(ctx, t.isEmpty ? initial : t);
-            },
-            child: const Text('Kaydet'),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final list = _seen.values.toList()
+      ..sort((a, b) {
+        // iTag'ler, sonra isimliler üstte; her grupta sinyale göre.
+        int rank(ScanResult r) =>
+            _looksLikeItag(r) ? 0 : (_nameOf(r).isNotEmpty ? 1 : 2);
+        final d = rank(a) - rank(b);
+        return d != 0 ? d : b.rssi - a.rssi;
+      });
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Etiket Ekle')),
+      appBar: AppBar(title: const Text('Bluetooth Cihazları')),
       body: Column(
         children: [
-          if (_scanning || _verifying) const LinearProgressIndicator(),
-          if (_verifying)
-            const Padding(
-              padding: EdgeInsets.all(12),
-              child: Text('Doğrulanıyor...'),
-            ),
+          const _BluetoothOffBanner(),
+          if (_userScan || _connectingId != null)
+            const LinearProgressIndicator(),
           Expanded(
-            child: _results.isEmpty
-                ? const Center(
+            child: list.isEmpty
+                ? Center(
                     child: Padding(
-                      padding: EdgeInsets.all(24),
+                      padding: const EdgeInsets.all(24),
                       child: Text(
-                        'Yeni etiket bulunamadı.\n'
-                        'Etiketin düğmesine bir kez basıp uyandırın.',
+                        _userScan
+                            ? 'Taranıyor...'
+                            : 'Çevredeki cihazları görmek için "Tara"ya basın.',
                         textAlign: TextAlign.center,
                       ),
                     ),
                   )
-                : ListView(
-                    children: [
-                      for (final r in _results)
-                        ListTile(
-                          leading: const Icon(Icons.key, color: Colors.indigo),
-                          title: Text(_nameOf(r).isEmpty ? '(isimsiz)' : _nameOf(r)),
-                          subtitle: Text(r.device.remoteId.str),
-                          trailing: Text('${r.rssi} dBm'),
-                          enabled: !_verifying,
-                          onTap: () => _onPick(r),
-                        ),
-                    ],
+                : ListenableBuilder(
+                    listenable: tagManager,
+                    builder: (context, _) => ListView.builder(
+                      itemCount: list.length,
+                      itemBuilder: (context, i) {
+                        final r = list[i];
+                        final id = r.device.remoteId.str;
+                        final name = _nameOf(r);
+                        final itag = _looksLikeItag(r);
+                        final saved = tagManager.isSaved(id);
+                        return ListTile(
+                          leading: Icon(
+                            itag ? Icons.key : Icons.bluetooth,
+                            color: itag ? Colors.indigo : Colors.grey,
+                          ),
+                          title: Text(name.isEmpty ? '(isimsiz cihaz)' : name),
+                          subtitle: Text(saved ? '$id · Kayıtlı' : id),
+                          trailing: _connectingId == id
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : Text('${r.rssi} dBm'),
+                          enabled: _connectingId == null,
+                          onTap: () => _connect(r),
+                        );
+                      },
+                    ),
                   ),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _scanning ? FlutterBluePlus.stopScan : _startScan,
-        child: Icon(_scanning ? Icons.stop : Icons.refresh),
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'scan',
+        onPressed: _userScan ? _stopScan : _startScan,
+        icon: Icon(_userScan ? Icons.stop : Icons.search),
+        label: Text(_userScan ? 'Durdur' : 'Tara'),
       ),
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// Etiket detayı
+// Sekme 2: Kayıtlı cihazlar
 // ---------------------------------------------------------------------------
 
-class TagDetailScreen extends StatelessWidget {
-  const TagDetailScreen({super.key, required this.conn});
+Future<bool> confirmDelete(BuildContext context, String name) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Kayıtlı cihazı sil?'),
+      content: Text('"$name" bu telefondan kaldırılacak ve bağlantısı kesilecek.'),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Vazgeç')),
+        FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Sil')),
+      ],
+    ),
+  );
+  return ok == true;
+}
+
+class SavedTab extends StatelessWidget {
+  const SavedTab({super.key, required this.onGoScan});
+  final VoidCallback onGoScan;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: tagManager,
+      builder: (context, _) {
+        final conns = tagManager.connections;
+        return Scaffold(
+          appBar: AppBar(title: const Text('Kayıtlı Cihazlar')),
+          body: Column(
+            children: [
+              const _BluetoothOffBanner(),
+              Expanded(
+                child: !tagManager.loaded
+                    ? const Center(child: CircularProgressIndicator())
+                    : conns.isEmpty
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Text(
+                                    'Henüz kayıtlı cihaz yok.\n'
+                                    'Bluetooth sekmesinden bir cihaza bağlanınca '
+                                    'burada görünür.',
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  FilledButton.icon(
+                                    onPressed: onGoScan,
+                                    icon: const Icon(Icons.bluetooth_searching),
+                                    label: const Text('Cihaz ara'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        : ListView(
+                            children: [
+                              for (final c in conns) _SavedTile(conn: c),
+                              const Padding(
+                                padding: EdgeInsets.all(16),
+                                child: Text(
+                                  'Silmek için sola kaydırın.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Colors.grey),
+                                ),
+                              ),
+                            ],
+                          ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SavedTile extends StatelessWidget {
+  const _SavedTile({required this.conn});
+  final TagConnection conn;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = conn;
+    final Color color = c.lostAlarm || c.suspicious
+        ? Colors.red
+        : c.isConnected
+            ? Colors.green
+            : Colors.grey;
+    return Dismissible(
+      key: ValueKey(c.tag.id),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        color: Colors.red,
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 24),
+        child: const Icon(Icons.delete, color: Colors.white),
+      ),
+      confirmDismiss: (_) => confirmDelete(context, c.tag.name),
+      onDismissed: (_) => tagManager.remove(c.tag.id),
+      child: ListTile(
+        leading: Icon(c.tag.isItag ? Icons.key : Icons.bluetooth, color: color),
+        title: Text(c.tag.name),
+        subtitle: Text(c.statusText, style: TextStyle(color: color)),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Switch(
+              value: c.tag.autoConnect,
+              onChanged: (v) =>
+                  tagManager.update(c.tag.copyWith(autoConnect: v)),
+            ),
+          ],
+        ),
+        onTap: () => openDevice(context, c),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cihaz detayı
+// ---------------------------------------------------------------------------
+
+class DeviceDetailScreen extends StatelessWidget {
+  const DeviceDetailScreen({super.key, required this.conn});
   final TagConnection conn;
 
   String _distanceHint(int? r) {
@@ -309,23 +457,34 @@ class TagDetailScreen extends StatelessWidget {
     return 'Çok uzak';
   }
 
-  Future<void> _confirmDelete(BuildContext context) async {
-    final ok = await showDialog<bool>(
+  Future<void> _rename(BuildContext context) async {
+    final ctrl = TextEditingController(text: conn.tag.name);
+    final name = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Etiketi sil?'),
-        content: Text('"${conn.tag.name}" bu telefondan kaldırılacak.'),
+        title: const Text('İsim değiştir'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Örn. Anahtarlık'),
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Vazgeç')),
+              onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Sil')),
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: const Text('Kaydet'),
+          ),
         ],
       ),
     );
-    if (ok == true && context.mounted) {
+    if (name != null && name.isNotEmpty) {
+      await tagManager.update(conn.tag.copyWith(name: name));
+    }
+  }
+
+  Future<void> _delete(BuildContext context) async {
+    if (await confirmDelete(context, conn.tag.name) && context.mounted) {
       Navigator.of(context).pop();
       await tagManager.remove(conn.tag.id);
     }
@@ -342,9 +501,14 @@ class TagDetailScreen extends StatelessWidget {
             title: Text(c.tag.name),
             actions: [
               IconButton(
+                icon: const Icon(Icons.edit_outlined),
+                tooltip: 'İsim değiştir',
+                onPressed: () => _rename(context),
+              ),
+              IconButton(
                 icon: const Icon(Icons.delete_outline),
-                tooltip: 'Etiketi sil',
-                onPressed: () => _confirmDelete(context),
+                tooltip: 'Sil',
+                onPressed: () => _delete(context),
               ),
             ],
           ),
@@ -358,11 +522,22 @@ class TagDetailScreen extends StatelessWidget {
                     leading: const Icon(Icons.warning, color: Colors.red),
                     title: const Text('Bağlantı koptu!'),
                     subtitle: const Text(
-                        'Etiket uzakta olabilir. Yaklaşınca otomatik bağlanacak.'),
+                        'Cihaz uzakta olabilir. Yaklaşınca otomatik bağlanacak.'),
                     trailing: TextButton(
                       onPressed: c.dismissAlarm,
                       child: const Text('Sustur'),
                     ),
+                  ),
+                ),
+              if (c.suspicious)
+                Card(
+                  color: Colors.orange.shade100,
+                  child: const ListTile(
+                    leading: Icon(Icons.gpp_maybe, color: Colors.orange),
+                    title: Text('Şüpheli cihaz'),
+                    subtitle: Text(
+                        'Bu kimlikle bağlanan cihaz kayıtlı iTag gibi davranmıyor. '
+                        'Taklit olabilir; bağlantı kesildi.'),
                   ),
                 ),
               Card(
@@ -379,34 +554,59 @@ class TagDetailScreen extends StatelessWidget {
                           color: c.isConnected ? Colors.green : Colors.grey,
                         ),
                         const SizedBox(width: 8),
-                        Text(c.isConnected ? 'Bağlı' : 'Aranıyor...',
-                            style: Theme.of(context).textTheme.titleMedium),
-                        if (c.trusted) ...[
-                          const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(c.statusText,
+                              style: Theme.of(context).textTheme.titleMedium),
+                        ),
+                        if (c.trusted)
                           const Icon(Icons.verified_user,
                               size: 18, color: Colors.green),
-                        ],
                       ]),
                       const SizedBox(height: 8),
                       Text('Sinyal: ${c.rssi ?? '-'} dBm  (${_distanceHint(c.rssi)})'),
                       Text('Pil: ${c.battery != null ? '%${c.battery}' : 'bilinmiyor'}'),
-                      Text('Düğmeye basılma: ${c.buttonPresses}'),
+                      if (c.tag.isItag)
+                        Text('Düğmeye basılma: ${c.buttonPresses}'),
                       Text('Kimlik: ${c.tag.id}',
                           style: const TextStyle(fontSize: 12, color: Colors.grey)),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(64),
-                  backgroundColor: c.ringing ? Colors.red : null,
-                ),
-                onPressed: c.canRing ? () => c.setTagAlert(!c.ringing) : null,
-                icon: Icon(c.ringing ? Icons.volume_off : Icons.volume_up),
-                label: Text(c.ringing ? 'Sustur' : 'Etiketi Öttür'),
+              SwitchListTile(
+                title: const Text('Otomatik bağlan'),
+                subtitle: const Text(
+                    'Cihaz menzile girince kendiliğinden bağlanır; koparsa alarm çalar.'),
+                value: c.tag.autoConnect,
+                onChanged: (v) =>
+                    tagManager.update(c.tag.copyWith(autoConnect: v)),
               ),
+              const SizedBox(height: 8),
+              if (c.isConnected)
+                OutlinedButton.icon(
+                  onPressed: c.disconnectManually,
+                  icon: const Icon(Icons.link_off),
+                  label: const Text('Bağlantıyı kes'),
+                )
+              else
+                OutlinedButton.icon(
+                  onPressed:
+                      c.isConnecting ? null : () => c.connectNow(manual: true),
+                  icon: const Icon(Icons.link),
+                  label: Text(c.isConnecting ? 'Bağlanıyor...' : 'Bağlan'),
+                ),
+              if (c.tag.isItag) ...[
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(64),
+                    backgroundColor: c.ringing ? Colors.red : null,
+                  ),
+                  onPressed: c.canRing ? () => c.setTagAlert(!c.ringing) : null,
+                  icon: Icon(c.ringing ? Icons.volume_off : Icons.volume_up),
+                  label: Text(c.ringing ? 'Sustur' : 'Etiketi Öttür'),
+                ),
+              ],
               const SizedBox(height: 24),
               Text('Kayıt', style: Theme.of(context).textTheme.titleSmall),
               const Divider(),
