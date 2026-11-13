@@ -38,6 +38,35 @@ class MainActivity : FlutterActivity() {
                         Notifier.cancelLost(this, call.argument<String>("id") ?: "")
                         result.success(null)
                     }
+                    // Sessiz dinleme (Dart: tagManager.syncPassive)
+                    "setPassiveScan" -> {
+                        val ok = PassiveScan.configure(
+                            applicationContext,
+                            call.argument<Boolean>("enabled") ?: false,
+                            call.argument<List<String>>("ids") ?: emptyList()
+                        )
+                        result.success(ok)
+                    }
+                    // Bağlanınca / bağlantı kesilince konumu hemen kaydet.
+                    "recordSighting" -> {
+                        val id = call.argument<String>("id") ?: ""
+                        Sightings.record(applicationContext, listOf(id), force = true) {
+                            runOnUiThread { result.success(null) }
+                        }
+                    }
+                    "openMap" -> {
+                        val lat = call.argument<Double>("lat") ?: 0.0
+                        val lng = call.argument<Double>("lng") ?: 0.0
+                        val label = Uri.encode(call.argument<String>("label") ?: "")
+                        try {
+                            startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse("geo:$lat,$lng?q=$lat,$lng($label)"))
+                            )
+                            result.success(true)
+                        } catch (_: Exception) {
+                            result.success(false)
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -48,6 +77,7 @@ class MainActivity : FlutterActivity() {
                         mapOf(
                             "bluetooth" to granted("bluetooth"),
                             "location" to granted("location"),
+                            "location_bg" to granted("location_bg"),
                             "notification" to granted("notification"),
                         )
                     )
@@ -87,6 +117,13 @@ class MainActivity : FlutterActivity() {
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION
         )
+        // "Her zaman izin ver": uygulama kapalıyken son görülen konumu kaydetmek için.
+        // Android 11+ bunu ayrı ister ve sistem ayar sayfasına yönlendirir.
+        "location_bg" ->
+            if (Build.VERSION.SDK_INT >= 29)
+                arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+            else
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
         "notification" ->
             if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.POST_NOTIFICATIONS)
             else emptyArray()

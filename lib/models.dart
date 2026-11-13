@@ -135,6 +135,63 @@ class DeviceStore {
   }
 }
 
+/// Bir cihazın son görülme kaydı. Konum TELEFONUN konumudur (etiketin GPS'i
+/// yok); cihazın canlı konumu değildir.
+class Sighting {
+  Sighting({required this.seenAt, this.locatedAt, this.lat, this.lng, this.accuracy});
+
+  final DateTime seenAt; // etiket en son ne zaman duyuldu
+  final DateTime? locatedAt; // konum en son ne zaman alındı
+  final double? lat;
+  final double? lng;
+  final double? accuracy; // metre
+
+  bool get hasLocation => lat != null && lng != null;
+
+  static Sighting? fromJson(Map<String, dynamic> j) {
+    final t = j['t'];
+    if (t is! int) return null;
+    DateTime? d(dynamic v) =>
+        v is int ? DateTime.fromMillisecondsSinceEpoch(v) : null;
+    return Sighting(
+      seenAt: DateTime.fromMillisecondsSinceEpoch(t),
+      locatedAt: d(j['lt']),
+      lat: (j['lat'] as num?)?.toDouble(),
+      lng: (j['lng'] as num?)?.toDouble(),
+      accuracy: (j['acc'] as num?)?.toDouble(),
+    );
+  }
+}
+
+/// Son görülme kayıtları Android tarafında (Sightings.kt) yazılır; burada
+/// aynı SharedPreferences dosyasından okunur.
+class SightingStore {
+  static const _key = 'sightings_v1';
+
+  static Future<Map<String, Sighting>> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload(); // yerel tarafın yazdıklarını görmek için
+    final raw = prefs.getString(_key);
+    if (raw == null) return {};
+    try {
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      final out = <String, Sighting>{};
+      m.forEach((id, v) {
+        final s = Sighting.fromJson(v as Map<String, dynamic>);
+        if (s != null) out[id] = s;
+      });
+      return out;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  static Future<void> clear() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_key);
+  }
+}
+
 /// Uygulama geneli tercihler (doküman DataStore önerir; SharedPreferences).
 class AppSettings extends ChangeNotifier {
   bool onboarded = false;
@@ -142,6 +199,7 @@ class AppSettings extends ChangeNotifier {
   bool alertSound = true;
   bool alertVibrate = true;
   bool alertNotify = true; // sistem bildirimi
+  bool passiveTracking = true; // sessiz dinleme ile son görülen konum
 
   late SharedPreferences _p;
 
@@ -152,6 +210,7 @@ class AppSettings extends ChangeNotifier {
     alertSound = _p.getBool('alertSound') ?? true;
     alertVibrate = _p.getBool('alertVibrate') ?? true;
     alertNotify = _p.getBool('alertNotify') ?? true;
+    passiveTracking = _p.getBool('passiveTracking') ?? true;
   }
 
   Future<void> set({
@@ -160,7 +219,12 @@ class AppSettings extends ChangeNotifier {
     bool? alertSound,
     bool? alertVibrate,
     bool? alertNotify,
+    bool? passiveTracking,
   }) async {
+    if (passiveTracking != null) {
+      this.passiveTracking = passiveTracking;
+      await _p.setBool('passiveTracking', passiveTracking);
+    }
     if (alertNotify != null) {
       this.alertNotify = alertNotify;
       await _p.setBool('alertNotify', alertNotify);

@@ -32,6 +32,13 @@ class SettingsTab extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           NavRow(
+            icon: Icons.location_on_outlined,
+            title: 'Son Görülen Konum',
+            subtitle: 'Sessiz dinleme ve konum izni',
+            onTap: () => _push(context, const LocationSettingsPage()),
+          ),
+          const SizedBox(height: 10),
+          NavRow(
             icon: Icons.bluetooth,
             title: 'Bluetooth / İzinler',
             onTap: () => _push(context, const PermissionSettingsPage()),
@@ -153,6 +160,128 @@ class AlertSettingsPage extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Son görülen konum: sessiz dinleme ayarı, konum izinleri, pil açıklaması.
+class LocationSettingsPage extends StatefulWidget {
+  const LocationSettingsPage({super.key});
+
+  @override
+  State<LocationSettingsPage> createState() => _LocationSettingsPageState();
+}
+
+class _LocationSettingsPageState extends State<LocationSettingsPage>
+    with WidgetsBindingObserver {
+  Map<String, bool> _status = {};
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState s) {
+    // Kullanıcı sistem ayarlarından izin verip geri dönmüş olabilir.
+    if (s == AppLifecycleState.resumed) _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final s = await Perms.status();
+    if (mounted) setState(() => _status = s);
+  }
+
+  Future<void> _request(String group) async {
+    // Arka plan konumu, önce normal konum izni verilmiş olmasını ister.
+    if (group == 'location_bg' && _status['location'] != true) {
+      if (!await Perms.request('location')) {
+        await Perms.openSettings();
+        return _refresh();
+      }
+    }
+    final ok = await Perms.request(group);
+    if (!ok) await Perms.openSettings();
+    await _refresh();
+  }
+
+  Widget _perm(String group, String title, String desc) {
+    final ok = _status[group] == true;
+    return NavRow(
+      icon: ok ? Icons.check_circle : Icons.location_on_outlined,
+      color: ok ? AppColors.ok : null,
+      title: title,
+      subtitle: desc,
+      trailing: ok
+          ? const Text('Verildi', style: TextStyle(color: AppColors.ok))
+          : !Perms.supported
+              ? const Text('Yakında', style: TextStyle(color: AppColors.text2))
+              : TextButton(
+                  onPressed: () => _request(group),
+                  child: const Text('İzin ver'),
+                ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: appSettings,
+      builder: (context, _) => Scaffold(
+        appBar: AppBar(title: const Text('Son Görülen Konum')),
+        body: ListView(
+          padding: pagePadding(context),
+          children: [
+            NavRow(
+              icon: Icons.hearing_outlined,
+              title: 'Sessiz dinleme',
+              subtitle: 'Telefon, kayıtlı cihazlarını bağlanmadan dinler ve '
+                  'duyduğu yeri kaydeder. Cihaz ötmez.',
+              trailing: Switch(
+                value: appSettings.passiveTracking,
+                onChanged: (v) => appSettings.set(passiveTracking: v),
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text('Konum izinleri',
+                style: TextStyle(color: AppColors.text2, fontSize: 13)),
+            const SizedBox(height: 10),
+            _perm('location', 'Konum',
+                'Bağlandığın ve bağlantıyı kestiğin yeri kaydetmek için'),
+            const SizedBox(height: 10),
+            _perm('location_bg', 'Her zaman (arka planda)',
+                'Uygulama kapalıyken de kaydetmek için. Açılan ekranda '
+                '"Her zaman izin ver"i seç.'),
+            const SizedBox(height: 20),
+            const AppCard(
+              child: Text(
+                'Pil: Dinleme Bluetooth çipinde yapılır; konum GPS yerine '
+                'Wi-Fi/baz istasyonundan, en fazla 5 dakikada bir alınır. '
+                'Tahmini tüketim günde %1-3. Konum yaklaşık 20-100 m '
+                'hassasiyettedir ve telefonun konumudur, cihazın canlı '
+                'konumu değildir.',
+                style:
+                    TextStyle(color: AppColors.text2, fontSize: 13, height: 1.4),
+              ),
+            ),
+            if (!Perms.supported) ...[
+              const SizedBox(height: 12),
+              const Text(
+                'iPhone desteği henüz eklenmedi.',
+                style: TextStyle(color: AppColors.warn, fontSize: 13),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -280,8 +409,8 @@ class PrivacyPage extends StatelessWidget {
         children: [
           const AppCard(
             child: Text(
-              'Cihaz kayıtların (isim, simge, son görülme zamanı) yalnızca bu '
-              'telefonda saklanır. TPCM Find hiçbir veriyi bir sunucuya '
+              'Cihaz kayıtların (isim, simge, son görülme zamanı ve konumu) '
+              'yalnızca bu telefonda saklanır. TPCM Find hiçbir veriyi bir sunucuya '
               'göndermez; hesap veya bulut yedekleme yoktur.',
               style: TextStyle(color: AppColors.text2, fontSize: 14, height: 1.4),
             ),
@@ -320,10 +449,17 @@ class PrivacyPage extends StatelessWidget {
             },
           ),
           const SizedBox(height: 10),
-          const NavRow(
+          NavRow(
             icon: Icons.location_off_outlined,
+            color: AppColors.err,
             title: 'Son görülme konum kayıtlarını sil',
-            subtitle: 'Henüz konum kaydı tutulmuyor',
+            subtitle: 'Haritadaki tüm konum kayıtları silinir',
+            onTap: () async {
+              await tagManager.clearSightings();
+              if (context.mounted) {
+                showSnack(context, 'Konum kayıtları silindi.');
+              }
+            },
           ),
         ],
       ),
