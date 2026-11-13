@@ -271,22 +271,44 @@ class TagConnection extends ChangeNotifier {
     _connecting = true;
     notifyListeners();
     _log('Cihaz bulundu, bağlanılıyor…');
+    // Ucuz iTag'ler bağlantı isteğine bazen geç yanıt verir: kayıtlarda ilk
+    // deneme 10 sn'de zaman aşımına uğrayıp hemen ardından gelen deneme 3 sn'de
+    // bağlandı. Bu yüzden tek dokunuşta birkaç kez, daha uzun süreyle denenir.
     try {
-      await device.connect(
-        license: License.nonprofit,
-        timeout: const Duration(seconds: 10),
-        mtu: null,
-      );
-    } catch (e) {
-      if (!_cancelRequested) {
-        lastError = 'Cihaz bulundu ama bağlanılamadı. Tekrar dene.';
-        _log('Bağlanılamadı');
+      for (var attempt = 1; attempt <= _connectAttempts; attempt++) {
+        if (_cancelRequested) break;
+        connectAttempt = attempt;
+        notifyListeners();
+        try {
+          await device.connect(
+            license: License.nonprofit,
+            timeout: const Duration(seconds: 15),
+            mtu: null,
+          );
+          break; // bağlandı
+        } catch (e) {
+          if (_cancelRequested) break;
+          _log('Bağlantı denemesi $attempt başarısız');
+          if (attempt == _connectAttempts) {
+            lastError = 'Cihaz bulundu ama bağlanılamadı. Cihaza biraz '
+                'yaklaşıp tekrar dene.';
+          } else {
+            // Android BLE yığınının önceki denemeyi temizlemesine zaman tanı.
+            await Future.delayed(const Duration(milliseconds: 800));
+          }
+        }
       }
     } finally {
       _connecting = false;
+      connectAttempt = 0;
       notifyListeners();
     }
   }
+
+  static const int _connectAttempts = 3;
+
+  /// Şu anki bağlantı denemesi (1..3); bağlanmıyorken 0.
+  int connectAttempt = 0;
 
   /// Arama/bağlanma sürerken kullanıcı vazgeçti.
   Future<void> cancelConnect() async {

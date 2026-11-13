@@ -53,11 +53,20 @@ class _ConnectScreenState extends State<ConnectScreen> {
       _cancelled = false;
     });
     try {
-      await widget.device.connect(
-        license: License.nonprofit,
-        timeout: const Duration(seconds: 12),
-        mtu: null,
-      );
+      // iTag bağlantı isteğine bazen geç yanıt verir; birkaç kez dene.
+      for (var attempt = 1;; attempt++) {
+        try {
+          await widget.device.connect(
+            license: License.nonprofit,
+            timeout: const Duration(seconds: 15),
+            mtu: null,
+          );
+          break;
+        } catch (_) {
+          if (!mounted || _cancelled || attempt >= 3) rethrow;
+          await Future.delayed(const Duration(milliseconds: 800));
+        }
+      }
       final fp = ItagFingerprint(await widget.device.discoverServices());
       if (fp.looksLikeItag) {
         try {
