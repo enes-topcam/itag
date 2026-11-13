@@ -71,7 +71,7 @@ TPCM Find, ucuz bir Bluetooth 4.0 "Anti-Lost" iTag anahtarlığını bulmak içi
 | Uygulama ikonu | flutter_launcher_icons | 0.14.4 | Tek PNG'den tüm Android/iOS boyutlarını üretir |
 | Native köprü | Kotlin + MethodChannel | Kotlin 2.2.20 | İzin isteme (permission_handler derlenmedi) |
 | Android derleme | Gradle + Android Gradle Plugin | Gradle 8.14, AGP 8.11.1, Java 17 | Flutter'ın Android şablonu |
-| Sürüm kontrolü | Git (yerel) | — | 19 commit, uzak depo yok |
+| Sürüm kontrolü | Git + GitHub | — | [github.com/enes-topcam/itag](https://github.com/enes-topcam/itag) |
 
 Projede denenip kaldırılan paketler: `permission_handler` (Gradle hatası) ve `flutter_map` + `geolocator` (harita özelliği kaldırıldı).
 
