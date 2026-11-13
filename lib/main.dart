@@ -137,9 +137,9 @@ class _AddTagScreenState extends State<AddTagScreen> {
       setState(() => _results = list);
     });
     _scanningSub = FlutterBluePlus.isScanning.listen((s) {
-      setState(() => _scanning = s);
+      if (mounted) setState(() => _scanning = s);
     });
-    _startScan();
+    tagManager.pauseSearch().then((_) => _startScan());
   }
 
   @override
@@ -147,6 +147,7 @@ class _AddTagScreenState extends State<AddTagScreen> {
     FlutterBluePlus.stopScan();
     _scanSub.cancel();
     _scanningSub.cancel();
+    tagManager.resumeSearch();
     super.dispose();
   }
 
