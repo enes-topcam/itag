@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -114,6 +115,60 @@ class TagConnection extends ChangeNotifier {
 
   /// En son ne zaman bağlıydı (bağlanma ya da bağlantının kesilmesi anı).
   DateTime? get lastSeen => saved.lastSeenAt;
+
+  // ---- Mesafe tahmini ----------------------------------------------------
+  //
+  // Log-distance path loss modeli:  d = 10 ^ ((P1m − RSSI) / (10 · n))
+  //   P1m: 1 metredeki sinyal gücü (kalibrasyonla ölçülür; yoksa varsayılan)
+  //   n  : ortam zayıflama katsayısı (boş alan 2.0, iç mekan ~2.2-3)
+  // Duvar, cep, vücut 2-3 kat sapma yaratabilir; arayüzde "≈" ile gösterilir.
+
+  static const int defaultRssiAt1m = -60;
+  static const double pathLossExponent = 2.2;
+  static const int _rssiWindowSize = 7;
+  final List<int> _rssiWindow = [];
+
+  bool get isCalibrated => saved.rssiAt1m != null;
+
+  /// Tahmini uzaklık (metre); bağlı değilse null.
+  double? get distanceM {
+    final r = rssi;
+    if (r == null) return null;
+    final p1m = saved.rssiAt1m ?? defaultRssiAt1m;
+    return pow(10, (p1m - r) / (10 * pathLossExponent)).toDouble();
+  }
+
+  static int _median(List<int> xs) {
+    final s = [...xs]..sort();
+    return s[s.length ~/ 2];
+  }
+
+  bool calibrating = false;
+
+  /// Telefon etiketten 1 m uzaktayken çağrılır: ~5 sn ölçer, ortancayı
+  /// bu cihazın 1 m referansı olarak kaydeder. Ölçülen değeri döndürür.
+  Future<int?> calibrate() async {
+    if (!isConnected || calibrating) return null;
+    calibrating = true;
+    notifyListeners();
+    final samples = <int>[];
+    try {
+      for (var i = 0; i < 12; i++) {
+        try {
+          samples.add(await device.readRssi());
+        } catch (_) {}
+        await Future.delayed(const Duration(milliseconds: 400));
+      }
+      if (samples.length < 5) return null;
+      final m = _median(samples);
+      _persist(saved.copyWith(rssiAt1m: m));
+      _log('Kalibre edildi: 1 m = $m dBm');
+      return m;
+    } finally {
+      calibrating = false;
+      notifyListeners();
+    }
+  }
 
   BluetoothConnectionState state = BluetoothConnectionState.disconnected;
   int? rssi;
@@ -360,6 +415,7 @@ class TagConnection extends ChangeNotifier {
       trusted = false;
       ringing = false;
       rssi = null;
+      _rssiWindow.clear();
       if (wasConnectedBefore) {
         _persist(saved.copyWith(lastSeenAt: DateTime.now()));
       }
@@ -415,9 +471,15 @@ class TagConnection extends ChangeNotifier {
       }
 
       _rssiTimer?.cancel();
-      _rssiTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+      _rssiWindow.clear();
+      _rssiTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
         try {
-          rssi = await device.readRssi();
+          final raw = await device.readRssi();
+          // RSSI çok oynak (±5-10 dB); son ölçümlerin ortancası sıçramaları
+          // yok sayar, sayı her saniye zıplamaz.
+          _rssiWindow.add(raw);
+          if (_rssiWindow.length > _rssiWindowSize) _rssiWindow.removeAt(0);
+          rssi = _median(_rssiWindow);
           notifyListeners();
         } catch (_) {}
       });

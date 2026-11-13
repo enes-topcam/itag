@@ -22,6 +22,38 @@ class DeviceDetailScreen extends StatelessWidget {
   void _push(BuildContext context, Widget page) => Navigator.of(context)
       .push(MaterialPageRoute(builder: (_) => page));
 
+  Future<void> _calibrate(BuildContext context, TagConnection c) async {
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Mesafe kalibrasyonu'),
+        content: const Text(
+          'Telefonu cihazdan yaklaşık 1 metre uzağa koy (arada engel olmasın) '
+          've Başlat\'a bas. 5 saniye boyunca telefonu ve cihazı oynatma.',
+          style: TextStyle(color: AppColors.text2),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Vazgeç')),
+          FilledButton(
+            style: FilledButton.styleFrom(minimumSize: const Size(100, 44)),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Başlat'),
+          ),
+        ],
+      ),
+    );
+    if (go != true) return;
+    final m = await c.calibrate();
+    if (!context.mounted) return;
+    showSnack(
+        context,
+        m == null
+            ? 'Ölçülemedi; cihazın bağlı olduğundan emin ol.'
+            : 'Kalibre edildi (1 m = $m dBm).');
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -102,8 +134,8 @@ class DeviceDetailScreen extends StatelessWidget {
                 children: [
                   Expanded(
                     child: _StatTile(
-                      label: 'Sinyal',
-                      value: c.isConnected ? signalLabel(c.rssi) : '—',
+                      label: 'Uzaklık',
+                      value: c.isConnected ? distanceLabel(c.distanceM) : '—',
                       trailing: c.isConnected ? SignalBars(c.rssi) : null,
                     ),
                   ),
@@ -124,6 +156,33 @@ class DeviceDetailScreen extends StatelessWidget {
                   ),
                 ],
               ),
+              if (c.isConnected)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          c.isCalibrated
+                              ? 'Tahmini; duvar ve cep sapma yaratabilir.'
+                              : 'Tahmini. Daha isabetli olması için kalibre et.',
+                          style: const TextStyle(
+                              color: AppColors.text2, fontSize: 12),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: c.calibrating
+                            ? null
+                            : () => _calibrate(context, c),
+                        child: Text(c.calibrating
+                            ? 'Ölçülüyor…'
+                            : (c.isCalibrated
+                                ? 'Yeniden kalibre et'
+                                : 'Kalibre et')),
+                      ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 16),
               ..._mainAction(context, c),
               const SizedBox(height: 16),

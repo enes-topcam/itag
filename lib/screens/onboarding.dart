@@ -26,9 +26,9 @@ class WelcomeScreen extends StatelessWidget {
             padding: const EdgeInsets.all(AppDims.pad),
             child: Column(
               children: [
-                const Spacer(flex: 2),
-                const AppLogo(size: 104),
-                const SizedBox(height: 32),
+                const Spacer(flex: 3),
+                const AppLogo(size: 180),
+                const SizedBox(height: 40),
                 Text('TPCM Find',
                     style: Theme.of(context)
                         .textTheme
@@ -37,9 +37,7 @@ class WelcomeScreen extends StatelessWidget {
                 const SizedBox(height: 8),
                 const Text('Eşyalarını kolayca bul',
                     style: TextStyle(color: AppColors.text2, fontSize: 16)),
-                const Spacer(flex: 2),
-                const TagIllustration(size: 120, glow: true),
-                const Spacer(flex: 2),
+                const Spacer(flex: 4),
                 FilledButton(
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const PermissionsScreen()),

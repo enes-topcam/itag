@@ -47,6 +47,20 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+# Uygulama ikonu: `dart run flutter_launcher_icons` ile tüm boyutlar üretilir.
+# Kaynak: "Mor Işıklı Konum Takipçisi.png" (köşeleri kırpılmış, 1024 px).
+flutter_launcher_icons:
+  image_path: "assets/icon/app_icon.png"
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  # Android 8+ uyarlanabilir ikon: sistem kendi şekliyle (daire/squircle)
+  # keser; kenardaki sinyal dalgaları kesilmesin diye %8 içeri alınır.
+  adaptive_icon_background: "#15102D"
+  adaptive_icon_foreground: "assets/icon/app_icon.png"
+  adaptive_icon_foreground_inset: 8
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -58,6 +72,9 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/icon/app_icon.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

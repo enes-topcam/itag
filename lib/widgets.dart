@@ -37,6 +37,16 @@ String proximityLabel(int? rssi) {
   return rssi > -75 ? 'Yakında' : 'Uzakta';
 }
 
+/// Tahmini uzaklık metni. Hassasiyet uzaklıkla düştüğü için yuvarlama
+/// büyür: 10 m'ye kadar 1 m, 30 m'ye kadar 5 m adımları.
+String distanceLabel(double? m) {
+  if (m == null) return '—';
+  if (m < 1) return "≈ 1 m'den yakın";
+  if (m < 10) return '≈ ${m.round()} m';
+  if (m < 30) return '≈ ${(m / 5).round() * 5} m';
+  return '≈ 30 m+';
+}
+
 String relativeTime(DateTime? t) {
   if (t == null) return 'Bilinmiyor';
   final d = DateTime.now().difference(t);
@@ -57,8 +67,8 @@ String formatDate(DateTime? t) {
 (String, Color) statusOf(TagConnection c) {
   switch (c.status) {
     case LinkStatus.connected:
-      final p = proximityLabel(c.rssi);
-      return (p.isEmpty ? 'Bağlı' : 'Bağlı · $p', AppColors.ok);
+      final d = c.distanceM;
+      return (d == null ? 'Bağlı' : 'Bağlı · ${distanceLabel(d)}', AppColors.ok);
     case LinkStatus.searching:
       return ('Aranıyor…', AppColors.warn);
     case LinkStatus.connecting:
@@ -388,7 +398,7 @@ class SignalBars extends StatelessWidget {
   }
 }
 
-/// TPCM Find logosu: iç içe halkalar.
+/// TPCM Find logosu (uygulama ikonuyla aynı görsel).
 class AppLogo extends StatelessWidget {
   const AppLogo({super.key, this.size = 96});
   final double size;
@@ -399,34 +409,18 @@ class AppLogo extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: AppColors.accent.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(size * 0.24),
         boxShadow: [
           BoxShadow(
             color: AppColors.accent.withValues(alpha: 0.35),
-            blurRadius: size * 0.5,
+            blurRadius: size * 0.45,
           ),
         ],
       ),
-      child: Center(
-        child: Container(
-          width: size * 0.62,
-          height: size * 0.62,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: AppColors.accentLight, width: size * 0.06),
-          ),
-          child: Center(
-            child: Container(
-              width: size * 0.2,
-              height: size * 0.2,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.accentLight,
-              ),
-            ),
-          ),
-        ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(size * 0.24),
+        child: Image.asset('assets/icon/app_icon.png',
+            width: size, height: size, fit: BoxFit.cover),
       ),
     );
   }

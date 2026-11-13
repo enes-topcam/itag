@@ -23,7 +23,12 @@ class SavedDevice {
     this.alertOnDisconnect = true,
     this.autoConnect = true,
     this.lastAlertAt,
+    this.rssiAt1m,
   });
+
+  /// Kalibrasyon: etiketin 1 metredeki ölçülen sinyal gücü (dBm). Yoksa
+  /// varsayılan kullanılır. Mesafe tahmini bu değere çok duyarlıdır.
+  final int? rssiAt1m;
 
   /// Platform tanımlayıcısı: Android'de MAC adresi, iOS'ta iPhone'un bu
   /// cihaza verdiği UUID (iOS MAC göstermez; her telefon kendisi kaydeder).
@@ -58,8 +63,10 @@ class SavedDevice {
     bool? alertOnDisconnect,
     bool? autoConnect,
     DateTime? lastAlertAt,
+    int? rssiAt1m,
   }) =>
       SavedDevice(
+        rssiAt1m: rssiAt1m ?? this.rssiAt1m,
         id: id,
         displayName: displayName ?? this.displayName,
         advertisedName: advertisedName,
@@ -92,6 +99,7 @@ class SavedDevice {
         'alertOnDisconnect': alertOnDisconnect,
         'autoConnect': autoConnect,
         'lastAlertAt': lastAlertAt?.millisecondsSinceEpoch,
+        'rssiAt1m': rssiAt1m,
       };
 
   /// Eski sürümün kaydı ({id, name, isItag, autoConnect}) da okunur.
@@ -109,6 +117,7 @@ class SavedDevice {
         alertOnDisconnect: j['alertOnDisconnect'] as bool? ?? true,
         autoConnect: j['autoConnect'] as bool? ?? true,
         lastAlertAt: _date(j['lastAlertAt']),
+        rssiAt1m: j['rssiAt1m'] as int?,
       );
 }
 
