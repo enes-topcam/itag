@@ -185,14 +185,11 @@ class _AddTagScreenState extends State<AddTagScreen> {
       await d.connect(
           license: License.nonprofit, timeout: const Duration(seconds: 15));
       final fp = ItagFingerprint(await d.discoverServices());
-      // Doğrulandığını kullanıcıya göstermek için kısa bir bip.
-      if (fp.looksLikeItag) {
-        await fp.alertChar!.write([0x01],
-            withoutResponse: fp.alertChar!.properties.writeWithoutResponse);
-        await Future.delayed(const Duration(milliseconds: 600));
-        await fp.alertChar!.write([0x00],
-            withoutResponse: fp.alertChar!.properties.writeWithoutResponse);
-      }
+      // Birazdan bağlantıyı keseceğiz; etiket bu kopmada ötmesin.
+      try {
+        await fp.disableLinkLossBeep();
+      } catch (_) {}
+      // Bip yok: kalıcı bağlantı kurulunca bip-bip-bip zaten gelecek.
       return fp.looksLikeItag;
     } catch (e) {
       _snack('Bağlanılamadı: $e');
@@ -225,7 +222,7 @@ class _AddTagScreenState extends State<AddTagScreen> {
     return showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Etiket bulundu (bip sesi duydun mu?)'),
+        title: const Text('Etiket doğrulandı'),
         content: TextField(
           controller: ctrl,
           autofocus: true,
@@ -257,7 +254,7 @@ class _AddTagScreenState extends State<AddTagScreen> {
           if (_verifying)
             const Padding(
               padding: EdgeInsets.all(12),
-              child: Text('Doğrulanıyor... etiket kısa bir bip sesi çıkaracak.'),
+              child: Text('Doğrulanıyor...'),
             ),
           Expanded(
             child: _results.isEmpty

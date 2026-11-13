@@ -11,6 +11,10 @@ class ItagUuids {
   // Immediate Alert: etiketi öttürmek için (0x00 sus, 0x01 hafif, 0x02 yüksek)
   static final immediateAlertService = Guid('1802');
   static final alertLevel = Guid('2A06');
+  // Link Loss: bağlantı koparsa etiketin KENDİ çalacağı alarm seviyesi.
+  // Biz bunu 0x00 yapıp kopma alarmını telefona bırakıyoruz; yoksa etiket
+  // her kopmada (bağlanma denemeleri dahil) öter.
+  static final linkLossService = Guid('1803');
   // Etiket üzerindeki düğme bildirimi (üreticiye özel)
   static final buttonService = Guid('FFE0');
   static final buttonChar = Guid('FFE1');
@@ -38,15 +42,63 @@ class ItagFingerprint {
             c.uuid == ItagUuids.batteryLevel) {
           batteryChar = c;
         }
+        if (s.uuid == ItagUuids.linkLossService &&
+            c.uuid == ItagUuids.alertLevel) {
+          linkLossChar = c;
+        }
       }
     }
   }
 
+  BluetoothCharacteristic? linkLossChar;
   BluetoothCharacteristic? alertChar;
   BluetoothCharacteristic? buttonChar;
   BluetoothCharacteristic? batteryChar;
 
   bool get looksLikeItag => alertChar != null && buttonChar != null;
+
+  static Future<void> _write(BluetoothCharacteristic c, int v) =>
+      c.write([v], withoutResponse: c.properties.writeWithoutResponse);
+
+  /// Etiketin kendi kopma alarmını kapatır. Varsa true döner.
+  Future<bool> disableLinkLossBeep() async {
+    final c = linkLossChar;
+    if (c == null) return false;
+    await _write(c, 0x00);
+    return true;
+  }
+
+  /// "Bağlandım" sinyali: kısa bip-bip-bip.
+  Future<void> connectedChirp() async {
+    final c = alertChar;
+    if (c == null) return;
+    for (var i = 0; i < 3; i++) {
+      await _write(c, 0x02);
+      await Future.delayed(const Duration(milliseconds: 180));
+      await _write(c, 0x00);
+      await Future.delayed(const Duration(milliseconds: 220));
+    }
+  }
+
+  /// Tüm servis/karakteristikleri okunabilir satırlar halinde döker.
+  static List<String> describe(List<BluetoothService> services) {
+    final out = <String>[];
+    for (final s in services) {
+      out.add('Servis ${s.uuid.str}');
+      for (final c in s.characteristics) {
+        final p = c.properties;
+        final props = [
+          if (p.read) 'read',
+          if (p.write) 'write',
+          if (p.writeWithoutResponse) 'writeNoResp',
+          if (p.notify) 'notify',
+          if (p.indicate) 'indicate',
+        ].join(',');
+        out.add('   └ ${c.uuid.str} [$props]');
+      }
+    }
+    return out;
+  }
 }
 
 /// Kayıtlı tek bir etiketle olan kalıcı bağlantıyı yönetir.
@@ -77,6 +129,7 @@ class TagConnection extends ChangeNotifier {
   Timer? _alarmTimer;
   bool _stopping = false;
   bool _wasConnected = false;
+  bool _dumped = false;
   final List<DateTime> _recentPresses = [];
 
   bool get isConnected => state == BluetoothConnectionState.connected;
@@ -148,7 +201,26 @@ class TagConnection extends ChangeNotifier {
 
   Future<void> _setup() async {
     try {
-      final fp = ItagFingerprint(await device.discoverServices());
+      final services = await device.discoverServices();
+      final fp = ItagFingerprint(services);
+      // İlk iş: etiketin kendi kopma bip'ini kapat.
+      try {
+        if (await fp.disableLinkLossBeep()) {
+          _log('Etiketin kendi kopma alarmı kapatıldı (1803)');
+        } else {
+          _log('Etikette Link Loss (1803) servisi yok');
+        }
+      } catch (e) {
+        _log('Link Loss yazılamadı: $e');
+      }
+      if (!_dumped) {
+        _dumped = true;
+        // log en yeni üstte olduğu için ters sırayla ekle
+        for (final l in ItagFingerprint.describe(services).reversed) {
+          _log(l);
+        }
+        _log('--- GATT tablosu ---');
+      }
       if (!fp.looksLikeItag) {
         // Kaydettiğimiz kimlikle bağlanan cihaz beklenen servislere sahip
         // değil: taklit olabilir. Hiçbir komut göndermeden ayrıl.
@@ -181,6 +253,7 @@ class TagConnection extends ChangeNotifier {
         } catch (_) {}
       });
       _log('Hazır (iTag doğrulandı)');
+      await fp.connectedChirp();
     } catch (e) {
       _log('Kurulum hatası: $e');
     }
