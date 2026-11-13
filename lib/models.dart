@@ -140,6 +140,8 @@ class AppSettings extends ChangeNotifier {
   bool alertsEnabled = true; // global kopma uyarısı
   bool alertSound = true;
   bool alertVibrate = true;
+  bool alertNotify = true; // sistem bildirimi (uygulama kapalıyken de)
+  bool keepAlive = true; // uygulama kapatılınca da bağlı kal
 
   late SharedPreferences _p;
 
@@ -149,6 +151,8 @@ class AppSettings extends ChangeNotifier {
     alertsEnabled = _p.getBool('alertsEnabled') ?? true;
     alertSound = _p.getBool('alertSound') ?? true;
     alertVibrate = _p.getBool('alertVibrate') ?? true;
+    alertNotify = _p.getBool('alertNotify') ?? true;
+    keepAlive = _p.getBool('keepAlive') ?? true;
   }
 
   Future<void> set({
@@ -156,7 +160,17 @@ class AppSettings extends ChangeNotifier {
     bool? alertsEnabled,
     bool? alertSound,
     bool? alertVibrate,
+    bool? alertNotify,
+    bool? keepAlive,
   }) async {
+    if (alertNotify != null) {
+      this.alertNotify = alertNotify;
+      await _p.setBool('alertNotify', alertNotify);
+    }
+    if (keepAlive != null) {
+      this.keepAlive = keepAlive;
+      await _p.setBool('keepAlive', keepAlive);
+    }
     if (onboarded != null) {
       this.onboarded = onboarded;
       await _p.setBool('onboarded', onboarded);

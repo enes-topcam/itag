@@ -401,15 +401,15 @@ class LostModeScreen extends StatelessWidget {
                     selected: appSettings.alertVibrate,
                     onSelected: (v) => appSettings.set(alertVibrate: v),
                   ),
-                  const FilterChip(
-                    label: Text('Bildirim (yakında)'),
-                    selected: false,
-                    onSelected: null,
+                  FilterChip(
+                    label: const Text('Bildirim'),
+                    selected: appSettings.alertNotify,
+                    onSelected: (v) => appSettings.set(alertNotify: v),
                   ),
                 ],
               ),
               const SizedBox(height: 6),
-              const Text('Ses ve titreşim tercihi tüm cihazlar için geçerlidir.',
+              const Text('Uyarı yöntemi tüm cihazlar için geçerlidir.',
                   style: TextStyle(color: AppColors.text2, fontSize: 12)),
               const SizedBox(height: 20),
               AppCard(
@@ -437,9 +437,10 @@ class LostModeScreen extends StatelessWidget {
                     SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Uyarılar şu an uygulama açıkken çalışır. Bluetooth arka '
-                        'plan kısıtları nedeniyle uyarılar gecikebilir. Bağlantıyı '
-                        'kendin keserken uyarı verilmez.',
+                        'Uygulama kapalıyken uyarı bildirim olarak gelir '
+                        '(Ayarlar\'da "Arka planda bağlı kal" açık olmalı). '
+                        'Bluetooth arka plan kısıtları nedeniyle uyarılar '
+                        'gecikebilir. Bağlantıyı kendin keserken uyarı verilmez.',
                         style: TextStyle(color: AppColors.text2, fontSize: 13),
                       ),
                     ),

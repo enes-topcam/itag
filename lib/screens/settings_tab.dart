@@ -113,6 +113,30 @@ class AlertSettingsPage extends StatelessWidget {
                   onChanged: (v) => appSettings.set(alertVibrate: v),
                 ),
               ),
+              const SizedBox(height: 10),
+              NavRow(
+                icon: Icons.notifications_outlined,
+                title: 'Bildirim',
+                subtitle: 'Uygulama kapalıyken de bildirim gönder',
+                trailing: Switch(
+                  value: appSettings.alertNotify,
+                  onChanged: (v) => appSettings.set(alertNotify: v),
+                ),
+              ),
+              const SizedBox(height: 24),
+              const Text('Arka plan',
+                  style: TextStyle(color: AppColors.text2, fontSize: 13)),
+              const SizedBox(height: 10),
+              NavRow(
+                icon: Icons.shield_moon_outlined,
+                title: 'Arka planda bağlı kal',
+                subtitle: 'Uygulama kapatılınca da cihazlara bağlı kalır; '
+                    'bildirim çubuğunda sürekli bir bildirim görünür.',
+                trailing: Switch(
+                  value: appSettings.keepAlive,
+                  onChanged: (v) => appSettings.set(keepAlive: v),
+                ),
+              ),
               if (conns.isNotEmpty) ...[
                 const SizedBox(height: 24),
                 const Text('Cihaz bazında kayıp modu',
@@ -133,8 +157,11 @@ class AlertSettingsPage extends StatelessWidget {
               ],
               const SizedBox(height: 12),
               const Text(
-                'Uyarılar şu an uygulama açıkken çalışır. Sistem bildirimi ve '
-                'arka planda uyarı bir sonraki sürümde gelecek.',
+                '"Arka planda bağlı kal" kapalıysa uygulamayı kapattığında '
+                'bağlantı kopar ve takip cihazı kendi alarmıyla öter. '
+                'Bildirim için Ayarlar > Bluetooth / İzinler bölümünden '
+                'bildirim izni verilmelidir. Bluetooth arka plan kısıtları '
+                'nedeniyle uyarılar gecikebilir.',
                 style: TextStyle(color: AppColors.text2, fontSize: 12),
               ),
             ],
