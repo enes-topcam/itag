@@ -196,6 +196,18 @@ class TagConnection extends ChangeNotifier {
     _hold = true;
     lostAlarm = false;
     _stopAlarm();
+    _ringTimer?.cancel();
+    // Kesmeden önce çalan sesi durdur. (Not: Bu, bizim iTag'in kopma bip'ini
+    // ENGELLEMİYOR — 2026-11-13'te test edildi; etiket her kopuşta öter.)
+    final c = _alertChar;
+    if (c != null) {
+      try {
+        await c.write([0x00],
+            withoutResponse: c.properties.writeWithoutResponse);
+        await Future.delayed(const Duration(milliseconds: 300));
+        _log('Kesmeden önce sessiz (0x00) komutu gönderildi');
+      } catch (_) {}
+    }
     _log('Bağlantı elle kesildi');
     try {
       await device.disconnect();
