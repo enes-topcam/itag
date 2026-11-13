@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
+import 'background.dart';
 import 'models.dart';
 
 /// iTag tipi ucuz BLE etiketlerin GATT UUID'leri (gerçek cihazda doğrulandı:
@@ -224,6 +225,7 @@ class TagConnection extends ChangeNotifier {
       if (lostAlarm) {
         lostAlarm = false;
         _stopAlarm();
+        Background.cancelLost(saved.id);
         _log('Cihaz geri geldi, uyarı durdu');
       }
       await _setup();
@@ -244,6 +246,10 @@ class TagConnection extends ChangeNotifier {
           lostAlarm = true;
           _persist(saved.copyWith(lastAlertAt: DateTime.now()));
           _startAlarm();
+          // Uygulama kapalıyken de görünsün diye sistem bildirimi.
+          if (appSettings.alertNotify) {
+            Background.notifyLost(saved.id, saved.displayName);
+          }
         }
       }
       notifyListeners();
@@ -361,6 +367,7 @@ class TagConnection extends ChangeNotifier {
   void dismissAlarm() {
     _stopAlarm();
     lostAlarm = false;
+    Background.cancelLost(saved.id);
     notifyListeners();
   }
 
@@ -420,6 +427,16 @@ class TagManager extends ChangeNotifier {
     _scanSub = FlutterBluePlus.onScanResults.listen(_onScanResults);
     _loop = Timer.periodic(const Duration(seconds: 3), (_) => _tick());
     _tick();
+    appSettings.addListener(_syncKeepAlive);
+    _syncKeepAlive();
+  }
+
+  /// Otomatik bağlanan en az bir cihaz varsa ve ayar açıksa arka plan
+  /// servisini çalıştır; uygulama kapatılınca bağlantı (dolayısıyla iTag'in
+  /// "bağlantı koptu" bip'i) kopmasın.
+  void _syncKeepAlive() {
+    final count = _devices.where((d) => d.autoConnect).length;
+    Background.setKeepAlive(appSettings.keepAlive && count > 0, count);
   }
 
   void _attach(TagConnection c) {
@@ -433,6 +450,11 @@ class TagManager extends ChangeNotifier {
     _devices = [for (final x in _devices) x.id == d.id ? d : x];
     DeviceStore.save(_devices);
     notifyListeners();
+  }
+
+  void _devicesChanged() {
+    notifyListeners();
+    _syncKeepAlive();
   }
 
   @override
@@ -486,12 +508,13 @@ class TagManager extends ChangeNotifier {
     _devices = [..._devices, d];
     await DeviceStore.save(_devices);
     _attach(TagConnection(d));
-    notifyListeners();
+    _devicesChanged();
   }
 
   Future<void> update(SavedDevice d) async {
     _conns[d.id]?.saved = d;
     _persist(d);
+    _syncKeepAlive();
     _tick();
   }
 
@@ -504,7 +527,7 @@ class TagManager extends ChangeNotifier {
       await c.stop();
       c.dispose();
     }
-    notifyListeners();
+    _devicesChanged();
   }
 
   Future<void> clearAll() async {

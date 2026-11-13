@@ -77,6 +77,34 @@ class _DiscoverTabState extends State<DiscoverTab> {
         r.advertisementData.serviceUuids.contains(ItagUuids.buttonService);
   }
 
+  /// Aynı isimli cihazları tek satırda göster. Bilgisayar/telefon gibi
+  /// cihazlar gizlilik için Bluetooth adreslerini sık değiştirir; her yeni
+  /// adres ayrı cihaz gibi görünür. İsimsizler birleştirilmez (ayırt edilemez).
+  /// Seçim önceliği: kayıtlı olan > en son görülen > en güçlü sinyal.
+  static List<ScanResult> _dedupeByName(Iterable<ScanResult> results) {
+    final byName = <String, ScanResult>{};
+    final unnamed = <ScanResult>[];
+    bool better(ScanResult a, ScanResult b) {
+      final sa = tagManager.isSaved(a.device.remoteId.str);
+      final sb = tagManager.isSaved(b.device.remoteId.str);
+      if (sa != sb) return sa;
+      final t = a.timeStamp.compareTo(b.timeStamp);
+      if (t != 0) return t > 0;
+      return a.rssi > b.rssi;
+    }
+
+    for (final r in results) {
+      final n = nameOf(r);
+      if (n.isEmpty) {
+        unnamed.add(r);
+        continue;
+      }
+      final cur = byName[n];
+      if (cur == null || better(r, cur)) byName[n] = r;
+    }
+    return [...byName.values, ...unnamed];
+  }
+
   Future<void> _turnOn() async {
     if (Platform.isAndroid) {
       try {
@@ -127,7 +155,7 @@ class _DiscoverTabState extends State<DiscoverTab> {
   @override
   Widget build(BuildContext context) {
     final q = _search.text.trim().toLowerCase();
-    final all = _seen.values.toList();
+    final all = _dedupeByName(_seen.values);
     final hiddenUnnamed =
         _showUnnamed ? 0 : all.where((r) => nameOf(r).isEmpty).length;
     final list = all
