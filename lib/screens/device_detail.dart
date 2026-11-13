@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../map_view.dart';
 import '../models.dart';
 import '../tag_connection.dart';
 import '../theme.dart';
@@ -67,10 +68,10 @@ class DeviceDetailScreen extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Center(child: StatusLabel(statusText, statusColor)),
-              if (!c.isConnected && s.lastSeenAt != null)
+              if (!c.isConnected && c.lastSeen != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
-                  child: Text('Son görülme: ${relativeTime(s.lastSeenAt)}',
+                  child: Text('Son görülme: ${relativeTime(c.lastSeen)}',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                           color: AppColors.text2, fontSize: 13)),
@@ -130,6 +131,9 @@ class DeviceDetailScreen extends StatelessWidget {
               NavRow(
                 icon: Icons.location_on_outlined,
                 title: 'Son Görülen Konum',
+                subtitle: (c.sighting?.hasLocation ?? false)
+                    ? relativeTime(c.sighting!.seenAt)
+                    : 'Konum kaydı yok',
                 onTap: () => _push(context, LastLocationScreen(conn: c)),
               ),
               const SizedBox(height: 10),
@@ -574,7 +578,7 @@ class DeviceInfoScreen extends StatelessWidget {
                   row('Bağlantı durumu', statusText),
                   row('Son bağlanma', formatDate(s.lastConnectedAt)),
                   row('İlk eklenme', formatDate(s.firstConnectedAt)),
-                  row('Son görülme', c.isConnected ? 'Şu an' : formatDate(s.lastSeenAt)),
+                  row('Son görülme', c.isConnected ? 'Şu an' : formatDate(c.lastSeen)),
                   row('Firmware', 'Bilinmiyor'),
                 ]),
               ),
@@ -652,27 +656,45 @@ class DeviceInfoScreen extends StatelessWidget {
   }
 }
 
-/// Sayfa 08 (cihaz) — Son Görülen Konum. Konum kaydı V1.1'de gelecek.
+/// Sayfa 08 (cihaz) — Son Görülen Konum.
 class LastLocationScreen extends StatelessWidget {
   const LastLocationScreen({super.key, required this.conn});
   final TagConnection conn;
 
   @override
   Widget build(BuildContext context) {
-    final s = conn.saved;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Son Görülen Konum')),
-      body: s.lastLatitude == null
-          ? EmptyState(
-              icon: Icons.location_off_outlined,
-              title: 'Bu cihazın kaydedilmiş son konumu yok.',
-              message: 'Son görülen konum özelliği bir sonraki sürümde '
-                  'gelecek. Bağlantı koptuğunda, izin verirsen telefonun o '
-                  'anki konumu kaydedilecek; bu cihazın canlı konumu değildir.',
-              actionLabel: 'Geri Dön',
-              onAction: () => Navigator.of(context).pop(),
-            )
-          : const SizedBox.shrink(),
+    return ListenableBuilder(
+      listenable: conn,
+      builder: (context, _) {
+        final hasLoc = conn.sighting?.hasLocation ?? false;
+        return Scaffold(
+          appBar: AppBar(title: const Text('Son Görülen Konum')),
+          body: !hasLoc
+              ? EmptyState(
+                  icon: Icons.location_off_outlined,
+                  title: 'Bu cihazın kaydedilmiş son konumu yok.',
+                  message: 'Telefon bu cihazı duyduğunda (ya da bağlandığında) '
+                      'konum kaydedilir. Konum izninin verildiğinden emin ol.',
+                  actionLabel: 'Konum ayarları',
+                  onAction: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const LocationSettingsPage())),
+                )
+              : ListView(
+                  padding: pagePadding(context, top: 4),
+                  children: [
+                    TagMap(conns: [conn], height: 380),
+                    const SizedBox(height: 16),
+                    SightingCard(conn: conn),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Gösterilen yer, telefonun cihazı en son duyduğu andaki '
+                      'kendi konumudur; cihazın canlı konumu değildir.',
+                      style: TextStyle(color: AppColors.text2, fontSize: 12),
+                    ),
+                  ],
+                ),
+        );
+      },
     );
   }
 }

@@ -183,8 +183,8 @@ class _DeviceCard extends StatelessWidget {
     final String detail;
     if (c.isConnected) {
       detail = 'Sinyal: ${signalLabel(c.rssi)}';
-    } else if (c.saved.lastSeenAt != null) {
-      detail = 'Son görülme: ${relativeTime(c.saved.lastSeenAt)}';
+    } else if (c.lastSeen != null) {
+      detail = 'Son görülme: ${relativeTime(c.lastSeen)}';
     } else {
       detail = 'Bağlı değil';
     }
