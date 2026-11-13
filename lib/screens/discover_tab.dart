@@ -44,7 +44,6 @@ class _DiscoverTabState extends State<DiscoverTab> {
     _scanningSub = FlutterBluePlus.isScanning.listen((s) {
       if (!s && _scanning) {
         _scanning = false;
-        tagManager.resumeSearch();
         if (mounted) setState(() {});
       }
     });
@@ -117,7 +116,10 @@ class _DiscoverTabState extends State<DiscoverTab> {
 
   Future<void> _startScan() async {
     if (tagManager.adapterState == BluetoothAdapterState.off) return;
-    await tagManager.pauseSearch();
+    if (tagManager.connections.any((c) => c.isSearching)) {
+      showSnack(context, 'Bir cihaz aranıyor; bitince tekrar tara.');
+      return;
+    }
     setState(() {
       _seen.clear();
       _scanning = true;
@@ -129,7 +131,6 @@ class _DiscoverTabState extends State<DiscoverTab> {
       await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
     } catch (e) {
       _scanning = false;
-      tagManager.resumeSearch();
       setState(() => _error = 'Tarama başlatılamadı. İzinleri kontrol et.');
     }
   }

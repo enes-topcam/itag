@@ -12,22 +12,13 @@ import android.os.Build
 
 /** Bildirim kanalları ve bildirimler. */
 object Notifier {
-    const val KEEPALIVE_ID = 1
-    private const val CH_KEEPALIVE = "keepalive"
     private const val CH_ALERTS = "alerts"
 
     private fun ensureChannels(ctx: Context) {
         if (Build.VERSION.SDK_INT < 26) return
         val nm = ctx.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(
-            NotificationChannel(
-                CH_KEEPALIVE, "Arka plan bağlantısı",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Uygulama kapalıyken cihazlara bağlı kalmak için"
-                setShowBadge(false)
-            }
-        )
+        // Önceki sürümün "hep bağlı kal" kanalını temizle.
+        nm.deleteNotificationChannel("keepalive")
         nm.createNotificationChannel(
             NotificationChannel(
                 CH_ALERTS, "Kopma uyarıları",
@@ -52,22 +43,6 @@ object Notifier {
     private fun builder(ctx: Context, channel: String): Notification.Builder =
         if (Build.VERSION.SDK_INT >= 26) Notification.Builder(ctx, channel)
         else Notification.Builder(ctx)
-
-    fun keepAlive(ctx: Context, count: Int): Notification {
-        ensureChannels(ctx)
-        val text = when {
-            count < 0 -> "Cihazlara yeniden bağlanılıyor"
-            count == 1 -> "1 cihaz korunuyor"
-            else -> "$count cihaz korunuyor"
-        }
-        return builder(ctx, CH_KEEPALIVE)
-            .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
-            .setContentTitle("TPCM Find çalışıyor")
-            .setContentText(text)
-            .setContentIntent(openApp(ctx))
-            .setOngoing(true)
-            .build()
-    }
 
     private fun canNotify(ctx: Context): Boolean =
         Build.VERSION.SDK_INT < 33 ||

@@ -10,31 +10,12 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- Bildirim: kopma uyarısı (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Arka planda bağlı kalma (ön plan servisi, tür: bağlı cihaz) -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
-    <!-- Telefon açılınca etikete yeniden bağlanıp onu susturmak için -->
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
     <application
         android:label="TPCM Find"
-        android:name=".App"
+        android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
-        <service
-            android:name=".KeepAliveService"
-            android:exported="false"
-            android:stopWithTask="false"
-            android:foregroundServiceType="connectedDevice" />
-        <receiver
-            android:name=".BootReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-            </intent-filter>
-        </receiver>
         <activity
             android:name=".MainActivity"
             android:exported="true"

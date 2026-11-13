@@ -117,24 +117,10 @@ class AlertSettingsPage extends StatelessWidget {
               NavRow(
                 icon: Icons.notifications_outlined,
                 title: 'Bildirim',
-                subtitle: 'Uygulama kapalıyken de bildirim gönder',
+                subtitle: 'Bağlantı koptuğunda sistem bildirimi de gönder',
                 trailing: Switch(
                   value: appSettings.alertNotify,
                   onChanged: (v) => appSettings.set(alertNotify: v),
-                ),
-              ),
-              const SizedBox(height: 24),
-              const Text('Arka plan',
-                  style: TextStyle(color: AppColors.text2, fontSize: 13)),
-              const SizedBox(height: 10),
-              NavRow(
-                icon: Icons.shield_moon_outlined,
-                title: 'Arka planda bağlı kal',
-                subtitle: 'Uygulama kapatılınca da cihazlara bağlı kalır; '
-                    'bildirim çubuğunda sürekli bir bildirim görünür.',
-                trailing: Switch(
-                  value: appSettings.keepAlive,
-                  onChanged: (v) => appSettings.set(keepAlive: v),
                 ),
               ),
               if (conns.isNotEmpty) ...[
@@ -157,11 +143,10 @@ class AlertSettingsPage extends StatelessWidget {
               ],
               const SizedBox(height: 12),
               const Text(
-                '"Arka planda bağlı kal" kapalıysa uygulamayı kapattığında '
-                'bağlantı kopar ve takip cihazı kendi alarmıyla öter. '
-                'Bildirim için Ayarlar > Bluetooth / İzinler bölümünden '
-                'bildirim izni verilmelidir. Bluetooth arka plan kısıtları '
-                'nedeniyle uyarılar gecikebilir.',
+                'Uygulama cihaza yalnızca sen "Bağlan" dediğinde bağlanır. '
+                'Kopma uyarıları sadece cihaz bağlıyken çalışır. Bildirim için '
+                'Ayarlar > Bluetooth / İzinler bölümünden bildirim izni '
+                'verilmelidir.',
                 style: TextStyle(color: AppColors.text2, fontSize: 12),
               ),
             ],

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -99,7 +100,7 @@ class ItagFingerprint {
 }
 
 /// Arayüzde gösterilen bağlantı durumu (doküman §3 "Ortak durum bileşenleri").
-enum LinkStatus { connected, connecting, lost, offline, suspicious }
+enum LinkStatus { connected, searching, connecting, lost, offline, suspicious }
 
 /// Kayıtlı tek bir cihazla olan bağlantıyı yönetir.
 class TagConnection extends ChangeNotifier {
@@ -132,18 +133,23 @@ class TagConnection extends ChangeNotifier {
   bool _stopping = false;
   bool _hold = false;
   bool _connecting = false;
+  bool _searching = false;
+  bool _cancelRequested = false;
   final List<DateTime> _recentPresses = [];
 
-  bool get isConnected => state == BluetoothConnectionState.connected;
-  bool get isConnecting => _connecting;
-  bool get canRing => isConnected && trusted && _alertChar != null;
+  /// Son "Bağlan" denemesi başarısızsa kullanıcıya gösterilecek mesaj.
+  String? lastError;
 
-  bool get needsAutoConnect =>
-      saved.autoConnect && !_stopping && !_hold && !isConnected && !_connecting;
+  bool get isConnected => state == BluetoothConnectionState.connected;
+  bool get isSearching => _searching;
+  bool get isConnecting => _connecting;
+  bool get isBusy => _searching || _connecting;
+  bool get canRing => isConnected && trusted && _alertChar != null;
 
   LinkStatus get status {
     if (lostAlarm) return LinkStatus.lost;
     if (isConnected) return LinkStatus.connected;
+    if (_searching) return LinkStatus.searching;
     if (_connecting) return LinkStatus.connecting;
     if (suspicious) return LinkStatus.suspicious;
     return LinkStatus.offline;
@@ -168,15 +174,49 @@ class TagConnection extends ChangeNotifier {
     _connSub = device.connectionState.listen(_onState);
   }
 
-  Future<void> connectNow({bool manual = false}) async {
-    if (_stopping || isConnected || _connecting) return;
-    if (manual) {
-      _hold = false;
-      suspicious = false;
+  /// Kullanıcı "Bağlan"a bastı. Uygulama cihaza YALNIZCA burada bağlanır
+  /// (otomatik bağlanma yok).
+  ///
+  /// Neden? Bu iTag her bağlantı kopuşunda öter ve bunu kapatan bir ayarı
+  /// yok. Hiç bağlanmazsak hiç ötmez; sadece kaybolunca bağlanıp buluruz.
+  ///
+  /// Akış: Bluetooth'u aç → cihazı 30 sn'ye kadar hedefli tara (kullanıcı bu
+  /// sırada yürüyüp yaklaşabilir) → görünce doğrudan bağlan.
+  Future<void> connectNow() async {
+    if (_stopping || isConnected || isBusy) return;
+    _hold = false;
+    suspicious = false;
+    _cancelRequested = false;
+    lastError = null;
+    _searching = true;
+    notifyListeners();
+
+    if (!await _ensureBluetoothOn()) {
+      _searching = false;
+      lastError = "Bluetooth kapalı. Bluetooth'u açıp tekrar dene.";
+      _log('Bluetooth açılamadı');
+      notifyListeners();
+      return;
     }
+
+    _log('Cihaz aranıyor…');
+    final found = await _scanFor(const Duration(seconds: 30));
+    _searching = false;
+    if (_cancelRequested) {
+      notifyListeners();
+      return;
+    }
+    if (!found) {
+      lastError = 'Cihaz bulunamadı. Biraz yürüyüp tekrar dene; cihazın '
+          'pilinin bitmediğinden emin ol.';
+      _log('30 sn içinde bulunamadı');
+      notifyListeners();
+      return;
+    }
+
     _connecting = true;
     notifyListeners();
-    _log(manual ? 'Bağlanılıyor…' : 'Cihaz görüldü, bağlanılıyor…');
+    _log('Cihaz bulundu, bağlanılıyor…');
     try {
       await device.connect(
         license: License.nonprofit,
@@ -184,10 +224,78 @@ class TagConnection extends ChangeNotifier {
         mtu: null,
       );
     } catch (e) {
-      _log('Bağlanılamadı${saved.autoConnect ? ', tekrar denenecek' : ''}');
+      if (!_cancelRequested) {
+        lastError = 'Cihaz bulundu ama bağlanılamadı. Tekrar dene.';
+        _log('Bağlanılamadı');
+      }
     } finally {
       _connecting = false;
       notifyListeners();
+    }
+  }
+
+  /// Arama/bağlanma sürerken kullanıcı vazgeçti.
+  Future<void> cancelConnect() async {
+    if (!isBusy) return;
+    _cancelRequested = true;
+    _hold = true;
+    if (FlutterBluePlus.isScanningNow) await FlutterBluePlus.stopScan();
+    if (_connecting) {
+      try {
+        await device.disconnect(); // bekleyen bağlantı isteğini iptal eder
+      } catch (_) {}
+    }
+    _log('Arama iptal edildi');
+    notifyListeners();
+  }
+
+  Future<bool> _ensureBluetoothOn() async {
+    if (FlutterBluePlus.adapterStateNow == BluetoothAdapterState.on) {
+      return true;
+    }
+    if (Platform.isAndroid) {
+      try {
+        await FlutterBluePlus.turnOn(); // sistem "Bluetooth açılsın mı?" sorar
+      } catch (_) {
+        return false;
+      }
+    }
+    try {
+      await FlutterBluePlus.adapterState
+          .where((s) => s == BluetoothAdapterState.on)
+          .first
+          .timeout(const Duration(seconds: 10));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Sadece bu cihazı arayan tarama; görünce true, süre dolunca false.
+  Future<bool> _scanFor(Duration timeout) async {
+    final found = Completer<bool>();
+    final sub = FlutterBluePlus.onScanResults.listen((rs) {
+      if (!found.isCompleted &&
+          rs.any((r) => r.device.remoteId == device.remoteId)) {
+        found.complete(true);
+      }
+    });
+    try {
+      if (FlutterBluePlus.isScanningNow) await FlutterBluePlus.stopScan();
+      await FlutterBluePlus.startScan(
+        withRemoteIds: [device.remoteId.str],
+        timeout: timeout,
+      );
+      // Tarama bitince (süre doldu ya da iptal) bulunamadı say.
+      FlutterBluePlus.isScanning.where((s) => !s).first.then((_) {
+        if (!found.isCompleted) found.complete(false);
+      });
+      return await found.future;
+    } catch (_) {
+      return false;
+    } finally {
+      await sub.cancel();
+      if (FlutterBluePlus.isScanningNow) await FlutterBluePlus.stopScan();
     }
   }
 
@@ -398,21 +506,15 @@ class TagConnection extends ChangeNotifier {
   }
 }
 
-/// Tüm kayıtlı cihazların bağlantılarını tutar; otomatik bağlan açık olanları
-/// hedefli taramayla arayıp doğrudan bağlar.
-///
-/// Neden Android autoConnect değil? Sistemin yavaş arka plan taramasına
-/// dayanır; Samsung'da test ederken hiç bağlanmadı.
+/// Tüm kayıtlı cihazları ve bağlantı nesnelerini tutar. Otomatik bağlanma
+/// YOK: bağlantıyı yalnızca kullanıcı "Bağlan" ile başlatır.
 class TagManager extends ChangeNotifier {
   final Map<String, TagConnection> _conns = {};
   List<SavedDevice> _devices = [];
   bool loaded = false;
   BluetoothAdapterState adapterState = BluetoothAdapterState.unknown;
 
-  Timer? _loop;
-  StreamSubscription<List<ScanResult>>? _scanSub;
   StreamSubscription<BluetoothAdapterState>? _adapterSub;
-  bool _paused = false;
 
   List<TagConnection> get connections =>
       _devices.map((d) => _conns[d.id]!).toList();
@@ -421,12 +523,10 @@ class TagManager extends ChangeNotifier {
   bool isSaved(String id) => _conns.containsKey(id);
 
   Future<void> init() async {
-    // adapterStateNow ancak biri adapterState'i dinlerken güncellenir;
-    // dinlemezsek Bluetooth'u hep "bilinmiyor" sanıp hiç aramayız.
+    // adapterStateNow ancak biri adapterState'i dinlerken güncellenir.
     _adapterSub = FlutterBluePlus.adapterState.listen((s) {
       adapterState = s;
       notifyListeners();
-      if (s == BluetoothAdapterState.on) _tick();
     });
 
     _devices = await DeviceStore.load();
@@ -435,20 +535,6 @@ class TagManager extends ChangeNotifier {
     }
     loaded = true;
     notifyListeners();
-
-    _scanSub = FlutterBluePlus.onScanResults.listen(_onScanResults);
-    _loop = Timer.periodic(const Duration(seconds: 3), (_) => _tick());
-    _tick();
-    appSettings.addListener(_syncKeepAlive);
-    _syncKeepAlive();
-  }
-
-  /// Otomatik bağlanan en az bir cihaz varsa ve ayar açıksa arka plan
-  /// servisini çalıştır; uygulama kapatılınca bağlantı (dolayısıyla iTag'in
-  /// "bağlantı koptu" bip'i) kopmasın.
-  void _syncKeepAlive() {
-    final count = _devices.where((d) => d.autoConnect).length;
-    Background.setKeepAlive(appSettings.keepAlive && count > 0, count);
   }
 
   void _attach(TagConnection c) {
@@ -464,55 +550,10 @@ class TagManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _devicesChanged() {
-    notifyListeners();
-    _syncKeepAlive();
-  }
-
   @override
   void dispose() {
-    _loop?.cancel();
-    _scanSub?.cancel();
     _adapterSub?.cancel();
     super.dispose();
-  }
-
-  Future<void> pauseSearch() async {
-    _paused = true;
-    if (FlutterBluePlus.isScanningNow) await FlutterBluePlus.stopScan();
-  }
-
-  void resumeSearch() {
-    _paused = false;
-    _tick();
-  }
-
-  Future<void> _tick() async {
-    if (_paused || FlutterBluePlus.isScanningNow) return;
-    if (adapterState != BluetoothAdapterState.on) return;
-    final ids = _conns.values
-        .where((c) => c.needsAutoConnect)
-        .map((c) => c.device.remoteId.str)
-        .toList();
-    if (ids.isEmpty) return;
-    try {
-      await FlutterBluePlus.startScan(
-        withRemoteIds: ids,
-        timeout: const Duration(seconds: 8),
-      );
-    } catch (_) {}
-  }
-
-  Future<void> _onScanResults(List<ScanResult> results) async {
-    if (_paused) return;
-    for (final r in results) {
-      final c = _conns[r.device.remoteId.str];
-      if (c != null && c.needsAutoConnect) {
-        await FlutterBluePlus.stopScan();
-        await c.connectNow();
-        return;
-      }
-    }
   }
 
   Future<void> add(SavedDevice d) async {
@@ -520,14 +561,12 @@ class TagManager extends ChangeNotifier {
     _devices = [..._devices, d];
     await DeviceStore.save(_devices);
     _attach(TagConnection(d));
-    _devicesChanged();
+    notifyListeners();
   }
 
   Future<void> update(SavedDevice d) async {
     _conns[d.id]?.saved = d;
     _persist(d);
-    _syncKeepAlive();
-    _tick();
   }
 
   Future<void> remove(String id) async {
@@ -539,7 +578,7 @@ class TagManager extends ChangeNotifier {
       await c.stop();
       c.dispose();
     }
-    _devicesChanged();
+    notifyListeners();
   }
 
   Future<void> clearAll() async {

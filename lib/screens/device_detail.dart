@@ -81,8 +81,7 @@ class DeviceDetailScreen extends StatelessWidget {
                   color: AppColors.err,
                   icon: Icons.warning_amber_rounded,
                   title: 'Bağlantı kesildi',
-                  text: 'Cihaz uzakta olabilir. Menzile girince otomatik '
-                      'bağlanılır.',
+                  text: 'Cihaz uzakta olabilir. Yaklaşıp tekrar "Bağlan"a bas.',
                   action: TextButton(
                       onPressed: c.dismissAlarm,
                       child: const Text('Uyarıyı sustur')),
@@ -147,17 +146,6 @@ class DeviceDetailScreen extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               NavRow(
-                icon: Icons.autorenew,
-                title: 'Otomatik Bağlan',
-                subtitle: 'Menzile girince kendiliğinden bağlan',
-                trailing: Switch(
-                  value: s.autoConnect,
-                  onChanged: (v) =>
-                      tagManager.update(s.copyWith(autoConnect: v)),
-                ),
-              ),
-              const SizedBox(height: 10),
-              NavRow(
                 icon: Icons.info_outline,
                 title: 'Cihaz Bilgileri',
                 onTap: () => _push(context, DeviceInfoScreen(conn: c)),
@@ -167,7 +155,10 @@ class DeviceDetailScreen extends StatelessWidget {
                 NavRow(
                   icon: Icons.link_off,
                   title: 'Bağlantıyı Kes',
-                  subtitle: 'Uyarı vermeden bağlantıyı kapatır',
+                  subtitle: s.isItag
+                      ? 'Kesince etiket öter; susturmak için üzerindeki '
+                          'tuşa bir kez bas.'
+                      : 'Bağlantıyı kapatır',
                   onTap: c.disconnectManually,
                   trailing: const SizedBox.shrink(),
                 ),
@@ -192,19 +183,63 @@ class DeviceDetailScreen extends StatelessWidget {
 
   List<Widget> _mainAction(BuildContext context, TagConnection c) {
     if (!c.isConnected) {
+      if (c.isBusy) {
+        // Arama/bağlanma sürüyor: ne olduğunu göster, iptal edilebilsin.
+        return [
+          AppCard(
+            child: Row(
+              children: [
+                const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        c.isSearching ? 'Cihaz aranıyor…' : 'Bağlanılıyor…',
+                        style: const TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        c.isSearching
+                            ? '30 sn boyunca aranır. Bulamazsa biraz yürüyüp '
+                                'tekrar dene.'
+                            : 'Cihazla iletişim kuruluyor',
+                        style: const TextStyle(
+                            color: AppColors.text2, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton(
+            onPressed: c.cancelConnect,
+            child: const Text('İptal Et'),
+          ),
+        ];
+      }
       return [
         FilledButton.icon(
-          onPressed: c.isConnecting ? null : () => c.connectNow(manual: true),
-          icon: c.isConnecting
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: AppColors.text2))
-              : const Icon(Icons.link),
-          label: Text(c.isConnecting ? 'Bağlanıyor…' : 'Yeniden Bağlan'),
+          onPressed: c.connectNow,
+          icon: const Icon(Icons.link),
+          label: const Text('Bağlan'),
         ),
-        if (c.saved.isItag)
+        if (c.lastError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text(c.lastError!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppColors.err, fontSize: 13)),
+          )
+        else if (c.saved.isItag)
           const Padding(
             padding: EdgeInsets.only(top: 8),
             child: Text('Ses çaldırmak için önce bağlan.',
@@ -437,10 +472,10 @@ class LostModeScreen extends StatelessWidget {
                     SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Uygulama kapalıyken uyarı bildirim olarak gelir '
-                        '(Ayarlar\'da "Arka planda bağlı kal" açık olmalı). '
-                        'Bluetooth arka plan kısıtları nedeniyle uyarılar '
-                        'gecikebilir. Bağlantıyı kendin keserken uyarı verilmez.',
+                        'Kayıp modu yalnızca cihaz bağlıyken çalışır: bağlıyken '
+                        'cihaz menzilden çıkarsa telefon uyarır. Bağlantıyı '
+                        'kendin keserken veya uygulamayı kapatırken uyarı '
+                        'verilmez.',
                         style: TextStyle(color: AppColors.text2, fontSize: 13),
                       ),
                     ),
