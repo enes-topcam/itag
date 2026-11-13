@@ -45,7 +45,8 @@ class SavedDevice {
   /// Kayıp modu: bağlantı beklenmedik şekilde koparsa uyar.
   final bool alertOnDisconnect;
 
-  /// Uygulama cihazı görünce kendiliğinden bağlansın mı?
+  /// Eski sürümden kalan alan; artık kullanılmıyor (otomatik bağlanma
+  /// kaldırıldı — bu iTag her kopuşta öttüğü için yalnızca istenince bağlanılır).
   final bool autoConnect;
   final DateTime? lastAlertAt;
 
@@ -140,8 +141,7 @@ class AppSettings extends ChangeNotifier {
   bool alertsEnabled = true; // global kopma uyarısı
   bool alertSound = true;
   bool alertVibrate = true;
-  bool alertNotify = true; // sistem bildirimi (uygulama kapalıyken de)
-  bool keepAlive = true; // uygulama kapatılınca da bağlı kal
+  bool alertNotify = true; // sistem bildirimi
 
   late SharedPreferences _p;
 
@@ -152,7 +152,6 @@ class AppSettings extends ChangeNotifier {
     alertSound = _p.getBool('alertSound') ?? true;
     alertVibrate = _p.getBool('alertVibrate') ?? true;
     alertNotify = _p.getBool('alertNotify') ?? true;
-    keepAlive = _p.getBool('keepAlive') ?? true;
   }
 
   Future<void> set({
@@ -161,15 +160,10 @@ class AppSettings extends ChangeNotifier {
     bool? alertSound,
     bool? alertVibrate,
     bool? alertNotify,
-    bool? keepAlive,
   }) async {
     if (alertNotify != null) {
       this.alertNotify = alertNotify;
       await _p.setBool('alertNotify', alertNotify);
-    }
-    if (keepAlive != null) {
-      this.keepAlive = keepAlive;
-      await _p.setBool('keepAlive', keepAlive);
     }
     if (onboarded != null) {
       this.onboarded = onboarded;

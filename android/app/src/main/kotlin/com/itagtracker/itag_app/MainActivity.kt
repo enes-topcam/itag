@@ -20,14 +20,27 @@ class MainActivity : FlutterActivity() {
     private var pending: MethodChannel.Result? = null
     private val requestCode = 4242
 
-    // App.kt'de başlatılan, ekrandan bağımsız yaşayan motoru kullan.
-    // Ekran kapanınca motor (ve Bluetooth bağlantıları) yok edilmez.
-    override fun getCachedEngineId(): String = App.ENGINE_ID
-
-    override fun shouldDestroyEngineWithHost(): Boolean = false
-
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // Kopma bildirimi (Dart: lib/background.dart).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "tpcm/background")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "notifyLost" -> {
+                        Notifier.showLost(
+                            this,
+                            call.argument<String>("id") ?: "",
+                            call.argument<String>("name") ?: "Cihaz"
+                        )
+                        result.success(null)
+                    }
+                    "cancelLost" -> {
+                        Notifier.cancelLost(this, call.argument<String>("id") ?: "")
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "tpcm/permissions")
             .setMethodCallHandler { call, result ->
                 when (call.method) {

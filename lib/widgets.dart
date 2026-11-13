@@ -59,6 +59,8 @@ String formatDate(DateTime? t) {
     case LinkStatus.connected:
       final p = proximityLabel(c.rssi);
       return (p.isEmpty ? 'Bağlı' : 'Bağlı · $p', AppColors.ok);
+    case LinkStatus.searching:
+      return ('Aranıyor…', AppColors.warn);
     case LinkStatus.connecting:
       return ('Bağlanıyor…', AppColors.warn);
     case LinkStatus.lost:
@@ -66,7 +68,7 @@ String formatDate(DateTime? t) {
     case LinkStatus.suspicious:
       return ('Şüpheli cihaz', AppColors.err);
     case LinkStatus.offline:
-      return ('Kayıtlı, çevrimdışı', AppColors.text2);
+      return ('Bağlı değil', AppColors.text2);
   }
 }
 

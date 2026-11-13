@@ -36,7 +36,6 @@ class _ConnectScreenState extends State<ConnectScreen> {
   @override
   void initState() {
     super.initState();
-    tagManager.pauseSearch();
     _connect();
   }
 
@@ -44,7 +43,6 @@ class _ConnectScreenState extends State<ConnectScreen> {
   void dispose() {
     if (!_handedOff) {
       widget.device.disconnect().catchError((_) {});
-      tagManager.resumeSearch();
     }
     super.dispose();
   }
@@ -247,7 +245,6 @@ class _SaveDeviceScreenState extends State<SaveDeviceScreen> {
   void dispose() {
     // Kaydetmeden çıkıldıysa bağlantıyı kapat: sadece bağlanmak kayıt yapmaz.
     if (!_saved) widget.device.disconnect().catchError((_) {});
-    tagManager.resumeSearch();
     super.dispose();
   }
 
@@ -263,9 +260,9 @@ class _SaveDeviceScreenState extends State<SaveDeviceScreen> {
       firstConnectedAt: now,
       lastConnectedAt: now,
       lastSeenAt: now,
-      // Takip cihazında kayıp modu ve otomatik bağlanma varsayılan açık.
+      // Otomatik bağlanma yok; kayıp modu (bağlıyken kopunca uyar) iTag'de açık.
       alertOnDisconnect: widget.isItag,
-      autoConnect: widget.isItag,
+      autoConnect: false,
     );
     _saved = true;
     // Bağlantı açık; TagConnection mevcut bağlantıyı devralır.
